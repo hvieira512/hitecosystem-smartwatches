@@ -10,6 +10,7 @@ use Ratchet\WebSocket\WsServer;
 use App\WebSocket\WatchServer;
 use App\Http\ApiServer;
 use App\Database\Database;
+use App\Log\Logger;
 use App\Redis\Client as RedisClient;
 
 $config = \App\Config::load()->all();
@@ -27,9 +28,9 @@ $db = null;
 if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
     try {
         $db = Database::connect($dbConfig);
-        echo "[DB] Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}\n";
+        Logger::channel('db')->info("Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
     } catch (\PDOException $e) {
-        echo "[DB] Aviso: sem MySQL (" . $e->getMessage() . "). A usar ficheiros JSON.\n";
+        Logger::channel('db')->warning('sem MySQL (' . $e->getMessage() . '). A usar ficheiros JSON');
     }
 }
 

@@ -12,6 +12,7 @@ use App\Registry\Whitelist;
 use App\Registry\DeviceCapabilities;
 use App\Repository\DeviceRepository;
 use App\Repository\EventRepository;
+use App\Log\Logger;
 use App\Redis\Client as RedisClient;
 
 class ApiServer
@@ -55,10 +56,10 @@ class ApiServer
         $this->socket = new SocketServer("$host:$port", [], $loop);
         $this->http->listen($this->socket);
 
-        echo "[API] HTTP API em http://$host:$port\n";
-        echo "[API] WS server URL: {$this->wsServerUrl}\n";
+        Logger::channel('api')->info("HTTP API em http://$host:$port");
+        Logger::channel('api')->info("WS server URL: {$this->wsServerUrl}");
         if ($watchServer === null) {
-            echo "[API] Modo separado: comandos enviados via Redis Stream\n";
+            Logger::channel('api')->info("Modo separado: comandos enviados via Redis Stream");
         }
     }
 
@@ -144,7 +145,7 @@ class ApiServer
                 'feature' => '',
                 'source' => 'api',
             ]);
-            echo "[API] Comando publicado via Redis: IMEI=$imei type=$type requestId=$requestId\n";
+            Logger::channel('api')->info("Comando publicado via Redis: IMEI=$imei type=$type requestId=$requestId");
             return true;
         }
         return false;

@@ -11,19 +11,20 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use App\Database\Migrator;
+use App\Log\Logger;
 
 $config = \App\Config::load()->all();
 $dbConfig = $config['database'] ?? null;
 
 if (!$dbConfig) {
-    echo "[ERRO] Sem configuracao 'database'. Defina variaveis de ambiente DB_*\n";
+    Logger::channel('db')->error("Sem configuracao 'database'. Defina variaveis de ambiente DB_*");
     exit(1);
 }
 
 try {
     $pdo = \App\Database\Database::connect($dbConfig)->pdo();
 } catch (\PDOException $e) {
-    echo "[ERRO] Falha ao ligar ao MySQL: " . $e->getMessage() . "\n";
+    Logger::channel('db')->error('Falha ao ligar ao MySQL: ' . $e->getMessage());
     echo "       Verifique as credenciais em .env\n";
     exit(1);
 }

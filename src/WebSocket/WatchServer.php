@@ -7,6 +7,7 @@ use Ratchet\ConnectionInterface;
 use App\Registry\Whitelist;
 use App\Registry\DeviceCapabilities;
 use App\Repository\EventRepository;
+use App\Log\Logger;
 use App\Redis\Client as RedisClient;
 
 class WatchServer implements MessageComponentInterface
@@ -42,8 +43,8 @@ class WatchServer implements MessageComponentInterface
     {
         $this->deviceData = $this->eventsRepo->latestForAllImeis();
         if (!empty($this->deviceData)) {
-            echo "[WatchServer] Carregados " . count($this->deviceData)
-                . " eventos recentes da base de dados.\n";
+            Logger::channel('watch')->info("Carregados " . count($this->deviceData)
+                . " eventos recentes da base de dados");
         }
     }
 
@@ -57,7 +58,7 @@ class WatchServer implements MessageComponentInterface
             'caps' => null,
             'sessionToken' => null,
         ];
-        echo "[+] Nova conexao: {$conn->resourceId}\n";
+        Logger::channel('watch')->info("Nova conexao: {$conn->resourceId}");
     }
 
     public function isRedisAvailable(): bool
@@ -69,13 +70,13 @@ class WatchServer implements MessageComponentInterface
     {
         $header = unpack("nstart/nlength", substr($msg, 0, 4));
         if ($header['start'] !== 0xFCAF) {
-            echo "[!] Pacote invalido (start field)\n";
+            Logger::channel('watch')->warning('Pacote invalido (start field)');
             return;
         }
 
         $payload = json_decode(substr($msg, 4, $header['length']), true);
         if (!$payload || !isset($payload['type'])) {
-            echo "[!] JSON invalido\n";
+            Logger::channel('watch')->warning('JSON invalido');
             return;
         }
 
@@ -109,7 +110,7 @@ class WatchServer implements MessageComponentInterface
 
         $sentToken = $payload['data']['sessionToken'] ?? '';
         if ($sentToken !== $session['sessionToken']) {
-            echo "[!] Token invalido para IMEI=$imei (esperado={$session['sessionToken']}, recebido=$sentToken)\n";
+            Logger::channel('watch')->warning("Token invalido para IMEI=$imei (esperado={$session['sessionToken']}, recebido=$sentToken)");
             $this->sendError($from, $payload, 'invalid_session_token',
                 'Token de sessao invalido');
             return;
@@ -139,7 +140,7 @@ class WatchServer implements MessageComponentInterface
 
         // Se e resposta a um comando nosso (w:reply), aceitar sempre
         if ($isReplyToServerCommand) {
-            echo "[reply] IMEI=$imei, type=$type\n";
+            Logger::channel('watch')->info("reply IMEI=$imei, type=$type");
             $this->sendJson($from, $this->buildReply($payload, $payload['data'] ?? []));
             return;
         }
@@ -206,12 +207,12 @@ class WatchServer implements MessageComponentInterface
             'timestamp' => $this->now(),
         ]);
 
-        echo "[+] Login OK: IMEI=$imei, Modelo=$model, "
+        Logger::channel('watch')->info("Login OK: IMEI=$imei, Modelo=$model, "
            . "Label={$this->whitelist->getLabel($imei)}, "
-           . "Session=$sessionToken\n";
+           . "Session=$sessionToken");
 
         if ($previousConn !== null && $previousConn !== $conn) {
-            echo "[!] Login duplicado para IMEI=$imei; nova conexao assumiu o encaminhamento.\n";
+            Logger::channel('watch')->warning("Login duplicado para IMEI=$imei; nova conexao assumiu o encaminhamento");
         }
     }
 
@@ -225,7 +226,7 @@ class WatchServer implements MessageComponentInterface
             'data' => ['error' => $msg],
             'timestamp' => $this->now(),
         ]);
-        echo "[-] Login rejeitado: IMEI=$imei ($msg)\n";
+        Logger::channel('watch')->warning("Login rejeitado: IMEI=$imei ($msg)");
     }
 
     private function routeCommand(ConnectionInterface $conn, array $payload): void
@@ -233,7 +234,7 @@ class WatchServer implements MessageComponentInterface
         $type = $payload['type'];
         $imei = $payload['imei'] ?? '';
 
-        echo "[data] IMEI=$imei, type=$type\n";
+        Logger::channel('watch')->info("data IMEI=$imei, type=$type");
 
         $this->sendJson($conn, $this->buildReply($payload));
     }
@@ -241,13 +242,13 @@ class WatchServer implements MessageComponentInterface
     public function sendCommand(string $imei, string $type, array $data = []): bool
     {
         if (!isset($this->deviceMap[$imei])) {
-            echo "[!] sendCommand: IMEI=$imei offline (nao esta neste node)\n";
+            Logger::channel('watch')->warning("sendCommand: IMEI=$imei offline (nao esta neste node)");
             if ($this->isRedisAvailable()) {
                 $node = $this->redis->deviceGetNode($imei);
                 if ($node === null) {
-                    echo "[!] sendCommand: IMEI=$imei nao encontrado no Redis\n";
+                    Logger::channel('watch')->warning("sendCommand: IMEI=$imei nao encontrado no Redis");
                 } elseif ($node !== $this->redis->getNodeId()) {
-                    echo "[!] sendCommand: IMEI=$imei esta no node $node (futuro: reencaminhar via Pub/Sub)\n";
+                    Logger::channel('watch')->warning("sendCommand: IMEI=$imei esta no node $node (futuro: reencaminhar via Pub/Sub)");
                 }
             }
             return false;
@@ -257,7 +258,7 @@ class WatchServer implements MessageComponentInterface
         $session = $this->sessions[$conn->resourceId] ?? null;
 
         if (!$session || !$session['caps']->supportsActive($type)) {
-            echo "[!] sendCommand: $type nao suportado para $imei\n";
+            Logger::channel('watch')->warning("sendCommand: $type nao suportado para $imei");
             return false;
         }
 
@@ -271,7 +272,7 @@ class WatchServer implements MessageComponentInterface
             'timestamp' => $this->now(),
         ]);
 
-        echo "[cmd] IMEI=$imei, type=$type, ident=$ident\n";
+        Logger::channel('watch')->info("cmd IMEI=$imei, type=$type, ident=$ident");
         return true;
     }
 
@@ -300,13 +301,13 @@ class WatchServer implements MessageComponentInterface
     {
         $rid = $conn->resourceId;
         $imei = $this->sessions[$rid]['imei'] ?? 'desconhecido';
-        echo "[-] Desconectado: resourceId=$rid, IMEI=$imei\n";
+        Logger::channel('watch')->info("Desconectado: resourceId=$rid, IMEI=$imei");
 
         if ($imei && isset($this->deviceMap[$imei]) && $this->deviceMap[$imei] === $conn) {
             $fallback = $this->findConnectionForImei($imei, $rid);
             if ($fallback !== null) {
                 $this->deviceMap[$imei] = $fallback;
-                echo "[+] Reencaminhamento restaurado: IMEI=$imei, resourceId={$fallback->resourceId}\n";
+                Logger::channel('watch')->info("Reencaminhamento restaurado: IMEI=$imei, resourceId={$fallback->resourceId}");
             } else {
                 unset($this->deviceMap[$imei]);
                 if ($this->isRedisAvailable()) {
@@ -320,7 +321,7 @@ class WatchServer implements MessageComponentInterface
 
     public function onError(ConnectionInterface $conn, \Exception $e): void
     {
-        echo "[!] Erro: {$e->getMessage()}\n";
+        Logger::channel('watch')->error($e->getMessage());
         $conn->close();
     }
 

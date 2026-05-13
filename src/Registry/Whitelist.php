@@ -4,6 +4,7 @@ namespace App\Registry;
 
 use App\Repository\DeviceRepository;
 use App\Database\Migrator;
+use App\Log\Logger;
 
 class Whitelist
 {
@@ -46,7 +47,7 @@ class Whitelist
         if (empty($this->devices) && file_exists($this->filePath)) {
             $count = $this->migrator->seedFromWhitelistJson($this->filePath);
             if ($count > 0) {
-                echo "[Whitelist] Migrados $count dispositivos de $this->filePath para MySQL\n";
+                Logger::channel('whitelist')->info("Migrados $count dispositivos de $this->filePath para MySQL");
                 $this->loadFromDatabase();
             }
         }

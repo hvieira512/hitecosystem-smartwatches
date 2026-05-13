@@ -7,7 +7,8 @@
         "ext-pdo": "*",
         "ext-pdo_mysql": "*",
         "cboden/ratchet": "^0.4",
-        "react/http": "^1.11"
+        "react/http": "^1.11",
+        "monolog/monolog": "^3.10"
     },
     "autoload": {
         "psr-4": {

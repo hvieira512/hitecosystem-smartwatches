@@ -5,6 +5,7 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use App\Database\Database;
 use App\Repository\EventRepository;
+use App\Log\Logger;
 use App\Redis\Client as RedisClient;
 
 $config = \App\Config::load()->all();
@@ -18,26 +19,26 @@ $consumerName = $workerId;
 $totalProcessed = 0;
 $running = true;
 
-echo "[Worker] Iniciando (PID: " . getmypid() . ")\n";
+Logger::channel('worker')->info('Iniciando (PID: ' . getmypid() . ')');
 
 // --- MySQL ---
 if (!$dbConfig || $dbConfig['host'] === '' || $dbConfig['name'] === '') {
-    echo "[Worker] ERRO: configuracao MySQL necessaria.\n";
+    Logger::channel('worker')->error('configuracao MySQL necessaria');
     exit(1);
 }
 try {
     $db = Database::connect($dbConfig);
     $eventsRepo = new EventRepository($db->pdo());
-    echo "[Worker] MySQL ligado a {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}\n";
+    Logger::channel('worker')->info("MySQL ligado a {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
 } catch (\PDOException $e) {
-    echo "[Worker] ERRO: MySQL indisponivel (" . $e->getMessage() . "). A encerrar.\n";
+    Logger::channel('worker')->error('MySQL indisponivel (' . $e->getMessage() . '). A encerrar');
     exit(1);
 }
 
 // --- Redis ---
 $redisHost = getenv('REDIS_HOST') ?: ($redisConfig['host'] ?? '');
 if ($redisHost === '') {
-    echo "[Worker] ERRO: configuracao Redis necessaria.\n";
+    Logger::channel('worker')->error('configuracao Redis necessaria');
     exit(1);
 }
 $redis = null;
@@ -46,30 +47,30 @@ try {
     if (!$redis->isAvailable()) {
         throw new \RuntimeException("RedisClient not available");
     }
-    echo "[Worker] Redis ligado a $redisHost\n";
+    Logger::channel('worker')->info("Redis ligado a $redisHost");
 } catch (\Throwable $e) {
-    echo "[Worker] ERRO: Redis indisponivel (" . $e->getMessage() . "). A encerrar.\n";
+    Logger::channel('worker')->error('Redis indisponivel (' . $e->getMessage() . '). A encerrar');
     exit(1);
 }
 
 // --- Consumer Group ---
 $redis->xGroupCreate($groupName, $streamKey, '0', true);
-echo "[Worker] Grupo '{$groupName}' pronto no stream '{$streamKey}'\n";
+Logger::channel('worker')->info("Grupo '{$groupName}' pronto no stream '{$streamKey}'");
 
 // --- Signal Handling ---
 if (extension_loaded('pcntl')) {
     pcntl_signal(SIGINT, function () use (&$running) {
-        echo "\n[Worker] SIGINT recebido. A encerrar graciosamente...\n";
+        Logger::channel('worker')->info('SIGINT recebido. A encerrar graciosamente...');
         $running = false;
     });
     pcntl_signal(SIGTERM, function () use (&$running) {
-        echo "\n[Worker] SIGTERM recebido. A encerrar graciosamente...\n";
+        Logger::channel('worker')->info('SIGTERM recebido. A encerrar graciosamente...');
         $running = false;
     });
 }
 
 // --- Main Loop ---
-echo "[Worker] A consumir eventos de '{$streamKey}' (consumidor: {$consumerName})\n";
+Logger::channel('worker')->info("A consumir eventos de '{$streamKey}' (consumidor: {$consumerName})");
 
 while ($running) {
     if (extension_loaded('pcntl')) {
@@ -79,7 +80,7 @@ while ($running) {
     try {
         $messages = $redis->xReadGroup($groupName, $consumerName, 50, 2000);
     } catch (\Throwable $e) {
-        echo "[Worker] Erro xReadGroup: {$e->getMessage()}\n";
+        Logger::channel('worker')->error("xReadGroup: {$e->getMessage()}");
         sleep(1);
         continue;
     }
@@ -96,10 +97,10 @@ while ($running) {
             $totalProcessed++;
 
             if ($totalProcessed % 100 === 0) {
-                echo "[Worker] {$totalProcessed} eventos processados\n";
+                Logger::channel('worker')->info("{$totalProcessed} eventos processados");
             }
         } catch (\Throwable $e) {
-            echo "[Worker] Erro ao inserir evento {$event['streamId']}: {$e->getMessage()}\n";
+            Logger::channel('worker')->error("Erro ao inserir evento {$event['streamId']}: {$e->getMessage()}");
             $ackIds[] = $event['streamId'];
         }
     }
@@ -108,12 +109,12 @@ while ($running) {
         try {
             $ackd = $redis->xAck($streamKey, $groupName, $ackIds);
             if ($ackd !== count($ackIds)) {
-                echo "[Worker] Aviso: acertados {$ackd}/" . count($ackIds) . " eventos\n";
+                Logger::channel('worker')->warning("acertados {$ackd}/" . count($ackIds) . " eventos");
             }
         } catch (\Throwable $e) {
-            echo "[Worker] Erro xAck: {$e->getMessage()}\n";
+            Logger::channel('worker')->error("xAck: {$e->getMessage()}");
         }
     }
 }
 
-echo "[Worker] Encerrado. Total processado: {$totalProcessed} eventos.\n";
+Logger::channel('worker')->info("Encerrado. Total processado: {$totalProcessed} eventos");

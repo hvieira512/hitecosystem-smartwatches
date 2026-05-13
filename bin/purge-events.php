@@ -6,6 +6,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use App\Database\Database;
 use App\Repository\DeviceRepository;
 use App\Repository\EventRepository;
+use App\Log\Logger;
 
 $config = \App\Config::load()->all();
 $dbConfig = $config['database'] ?? null;
@@ -49,7 +50,7 @@ foreach ($args as $arg) {
 }
 
 if (!$dbConfig || $dbConfig['host'] === '' || $dbConfig['name'] === '') {
-    echo "[Purge] ERRO: configuracao MySQL necessaria.\n";
+    Logger::channel('purge')->error('configuracao MySQL necessaria');
     exit(1);
 }
 
@@ -58,16 +59,16 @@ try {
     $devicesRepo = new DeviceRepository($db->pdo());
     $eventsRepo = new EventRepository($db->pdo());
 } catch (\PDOException $e) {
-    echo "[Purge] ERRO: MySQL indisponivel (" . $e->getMessage() . ").\n";
+    Logger::channel('purge')->error('MySQL indisponivel (' . $e->getMessage() . ')');
     exit(1);
 }
 
 $cutoffDate = date('Y-m-d H:i:s', strtotime("-{$olderThan} days"));
-echo "[Purge] Eventos anteriores a {$cutoffDate}, max {$keepPerDevice} por dispositivo\n";
+Logger::channel('purge')->info("Eventos anteriores a {$cutoffDate}, max {$keepPerDevice} por dispositivo");
 
 if ($dryRun) {
-    echo "[Purge] Modo dry-run — sem alteracoes\n";
-    echo "[Purge] Eventos removiveis por dispositivo:\n";
+    Logger::channel('purge')->info('Modo dry-run — sem alteracoes');
+    Logger::channel('purge')->info('Eventos removiveis por dispositivo:');
 
     $imeis = $devicesRepo->all();
     $totalRemovable = 0;
@@ -88,4 +89,4 @@ if ($dryRun) {
 }
 
 $purged = $eventsRepo->purgeOlderThan($cutoffDate, $keepPerDevice);
-echo "[Purge] Removidos {$purged} eventos.\n";
+Logger::channel('purge')->info("Removidos {$purged} eventos");

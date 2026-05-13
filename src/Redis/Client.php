@@ -2,6 +2,8 @@
 
 namespace App\Redis;
 
+use App\Log\Logger;
+
 class Client
 {
     private ?\Redis $redis = null;
@@ -18,7 +20,7 @@ class Client
         $this->nodeId = gethostname() ?: 'node-' . bin2hex(random_bytes(4));
 
         if (!extension_loaded('redis')) {
-            echo "[Redis] extensao 'redis' nao disponivel. Funcionalidades Redis desativadas.\n";
+            Logger::channel('redis')->warning("extensao 'redis' nao disponivel. Funcionalidades Redis desativadas.");
             return;
         }
 
@@ -33,11 +35,11 @@ class Client
             }
             $this->redis->ping();
             $this->available = true;
-            echo "[Redis] Ligado a $host:$port (node: {$this->nodeId})\n";
+            Logger::channel('redis')->info("Ligado a $host:$port (node: {$this->nodeId})");
         } catch (\Throwable $e) {
             $this->redis = null;
             $this->available = false;
-            echo "[Redis] Aviso: sem ligacao Redis (" . $e->getMessage() . ").\n";
+            Logger::channel('redis')->warning("sem ligacao Redis (" . $e->getMessage() . ")");
         }
     }
 
@@ -59,7 +61,7 @@ class Client
         try {
             $this->redis->hSet('device:online', $imei, $this->nodeId);
         } catch (\Throwable $e) {
-            echo "[Redis] Erro deviceSetOnline: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("deviceSetOnline: {$e->getMessage()}");
         }
     }
 
@@ -69,7 +71,7 @@ class Client
         try {
             $this->redis->hDel('device:online', $imei);
         } catch (\Throwable $e) {
-            echo "[Redis] Erro deviceSetOffline: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("deviceSetOffline: {$e->getMessage()}");
         }
     }
 
@@ -115,7 +117,7 @@ class Client
                 10000
             );
         } catch (\Throwable $e) {
-            echo "[Redis] Erro eventPush: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("eventPush: {$e->getMessage()}");
             return '0-0';
         }
     }
@@ -143,7 +145,7 @@ class Client
             }
             return $events;
         } catch (\Throwable $e) {
-            echo "[Redis] Erro readEvents: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("readEvents: {$e->getMessage()}");
             return [];
         }
     }
@@ -180,7 +182,7 @@ class Client
             if (str_contains($e->getMessage(), 'BUSYGROUP')) {
                 return true;
             }
-            echo "[Redis] Erro xGroupCreate: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("xGroupCreate: {$e->getMessage()}");
             return false;
         }
     }
@@ -209,7 +211,7 @@ class Client
             }
             return $events;
         } catch (\Throwable $e) {
-            echo "[Redis] Erro xReadGroup: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("xReadGroup: {$e->getMessage()}");
             return [];
         }
     }
@@ -220,7 +222,7 @@ class Client
         try {
             return $this->redis->xAck($stream, $group, $ids);
         } catch (\Throwable $e) {
-            echo "[Redis] Erro xAck: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("xAck: {$e->getMessage()}");
             return 0;
         }
     }
@@ -241,7 +243,7 @@ class Client
                 'timestamp' => (string)(int)round(microtime(true) * 1000),
             ], 5000);
         } catch (\Throwable $e) {
-            echo "[Redis] Erro commandPublish: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("commandPublish: {$e->getMessage()}");
             return '';
         }
     }
@@ -270,7 +272,7 @@ class Client
             }
             return $commands;
         } catch (\Throwable $e) {
-            echo "[Redis] Erro commandReadGroup: {$e->getMessage()}\n";
+            Logger::channel('redis')->error("commandReadGroup: {$e->getMessage()}");
             return [];
         }
     }

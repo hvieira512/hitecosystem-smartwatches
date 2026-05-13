@@ -2,6 +2,8 @@
 
 namespace App\Database;
 
+use App\Log\Logger;
+
 class Migrator
 {
     private \PDO $pdo;
@@ -15,7 +17,7 @@ class Migrator
     {
         $path = __DIR__ . '/../../config/schema.sql';
         if (!file_exists($path)) {
-            echo "[DB] schema.sql nao encontrado em $path\n";
+            Logger::channel('db')->error("schema.sql nao encontrado em $path");
             return;
         }
 
@@ -28,12 +30,12 @@ class Migrator
                 try {
                     $this->pdo->exec($statement);
                 } catch (\PDOException $e) {
-                    echo "[DB] Aviso: " . $e->getMessage() . "\n";
+                    Logger::channel('db')->warning($e->getMessage());
                 }
             }
         }
 
-        echo "[DB] Migracao concluida.\n";
+        Logger::channel('db')->info('Migracao concluida');
     }
 
     public function seedFromWhitelistJson(string $jsonPath): int
