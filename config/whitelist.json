@@ -1,0 +1,26 @@
+{
+  "865028000000306": {
+    "model": "WONLEX-PRO",
+    "label": "Relogio Joao (Wonlex Pro)",
+    "enabled": true,
+    "registered_at": "2025-01-15T10:00:00Z"
+  },
+  "865028000000307": {
+    "model": "WONLEX-HEALTH",
+    "label": "Relogio Maria (Wonlex Health)",
+    "enabled": true,
+    "registered_at": "2025-01-20T14:30:00Z"
+  },
+  "865028000000308": {
+    "model": "VIVISTAR-CARE",
+    "label": "Relogio Antonio (VIVISTAR Care)",
+    "enabled": false,
+    "registered_at": "2025-02-01T09:00:00Z"
+  },
+  "865028000000309": {
+    "model": "VIVISTAR-LITE",
+    "label": "Relogio Sofia (VIVISTAR Lite)",
+    "enabled": true,
+    "registered_at": "2025-03-10T11:00:00Z"
+  }
+}

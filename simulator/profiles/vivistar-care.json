@@ -1,0 +1,70 @@
+{
+  "model": "VIVISTAR-CARE",
+  "login": {
+    "deviceModel": "VIVISTAR-CARE",
+    "firmware": "G4P_EMMC_HJ_V1.5",
+    "platform": "4G LTE",
+    "batteryLevel": 80,
+    "deviceId": "3004627638"
+  },
+  "dataTemplates": {
+    "AP01": {
+      "gpsStatus": "A",
+      "lat": "2232.9806N",
+      "lng": "11404.9355E",
+      "speed": "000.1",
+      "direction": "323.87",
+      "gsmSignal": "060",
+      "satellites": "009",
+      "batteryLevel": "080",
+      "lbs": {"mcc": 460, "mnc": 0, "lac": 9520, "cid": 3671},
+      "wifi": [{"ssid": "HOME", "mac": "74-DE-2B-44-88-8C", "rssi": 97}]
+    },
+    "AP02": {
+      "language": "zh_cn",
+      "replyAddress": 0,
+      "baseStations": [{"mcc": 460, "mnc": 0, "lac": 9520, "cid": 3671, "dbm": 13}],
+      "wifi": [{"ssid": "1", "mac": "D8-24-BD-79-FA-1F", "rssi": 59}]
+    },
+    "AP03": {
+      "gsmSignal": "060",
+      "satellites": "009",
+      "batteryLevel": "080",
+      "fortification": "01",
+      "workingMode": "02",
+      "steps": 5555,
+      "rollsFrequency": 30
+    },
+    "AP07": {
+      "recordedAt": "20260513103000",
+      "totalPackets": 6,
+      "sequence": 1,
+      "length": 1024,
+      "audio": "base64-amr-audio"
+    },
+    "AP10": {
+      "gpsStatus": "A",
+      "lat": "2232.9806N",
+      "lng": "11404.9355E",
+      "alarmState": "01",
+      "language": "pt-pt",
+      "replyAddress": 0,
+      "includeMapLink": 0
+    },
+    "AP49": {"heartRate": 72},
+    "APHT": {"heartRate": 72, "systolic": 130, "diastolic": 85},
+    "APHP": {"heartRate": 72, "systolic": 130, "diastolic": 85, "spo2": 96, "bloodSugar": 90},
+    "AP50": {"bodyTemperature": 36.5, "batteryLevel": 80},
+    "APHD": {
+      "recordedAt": "20260513103000",
+      "totalPackets": 6,
+      "sequence": 1,
+      "gain": 1.3,
+      "zeroVoltage": 20.2,
+      "lead": 1,
+      "samplingRate": 1000,
+      "length": 1024,
+      "ecg": "base64-ecg-data"
+    }
+  }
+}

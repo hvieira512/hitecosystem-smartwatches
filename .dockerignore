@@ -1,0 +1,8 @@
+.git
+.gitignore
+.dockerignore
+vendor/
+var/
+.DS_Store
+*.md
+*.log

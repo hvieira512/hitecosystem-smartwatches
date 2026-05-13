@@ -1,0 +1,42 @@
+{
+  "model": "WONLEX-HEALTH",
+  "login": {
+    "deviceModel": "WONLEX-HEALTH",
+    "firmware": "V2.1.0",
+    "platform": "RTOS",
+    "batteryLevel": 90,
+    "cpuModel": "ASR3603"
+  },
+  "dataTemplates": {
+    "upHeartRate": {"date": "75", "testType": 0},
+    "upBP": {"date": "118/78/75", "testType": 0},
+    "upBO": {"date": "97", "testType": 0},
+    "upBodyTemperature": {"date": "36.6/31.0/27.8", "testType": 0},
+    "upBS": {"date": "5.4", "testType": 0},
+    "upBF": {"date": "3.00/1.10/1.00/3.00", "testType": 0},
+    "upUA": {"data": "420", "testType": 0},
+    "upBreathe": {"value": "17"},
+    "upECG": {"date": "99.5,101.2,98.7", "frequency": "500", "collectionLogo": "87654321"},
+    "upHRV": {"date": "152", "frequency": "50", "collectionLogo": "87654321"},
+    "upPPG": {"date": "0.82,0.70,0.88", "frequency": "100"},
+    "upRR": {"data": "1648111390074,1080;1648111391154,1570", "frequency": "100"},
+    "upBatch": {"heartRate": "75,76,74", "bp": "118/78/75", "bo": "97"},
+    "upSleep": {"upDayStr": "2026-05-13", "value": "360/100/240/20"},
+    "upTodayActivity": {"step": 3120, "exerciseTime": 1800, "standTime": 6},
+    "upRun": {"startTime": 1778667400000, "endTime": 1778669200000, "exerciseTime": 1800, "consumed": 120, "mileage": "1.8"},
+    "upWalk": {"startTime": 1778667400000, "endTime": 1778668600000, "exerciseTime": 1200, "consumed": 60, "mileage": "1.0"},
+    "upLocation": {
+      "baseStationType": 0,
+      "positionDataType": "1",
+      "gps": {"lon": "-9.1450", "lat": "38.7150", "height": 45, "satelliteNum": 8, "GSM": 90, "Type": 0},
+      "baseStation": [{"mcc": 268, "mnc": 1, "lac": 1234, "ci": 5679, "rxlev": 49}],
+      "wifi": [{"ssid": "HOME", "signal": "-58", "mac": "AA:BB:CC:DD:EE:FF"}]
+    },
+    "upBattery": {"batteryLevel": 90, "batteryState": 0, "batteryType": 2},
+    "upWeather": {"weather": "Sunny", "weatherType": 0, "temperature": "24", "humidity": "55"},
+    "upShutdown": {"reason": "powerOff"},
+    "upReset": {"reason": "factoryReset"},
+    "upGetOTA": {"version": "V2.1.0"},
+    "upDeviceConfig": {"configs": {"StepTarget": {"steps": 5000}}}
+  }
+}

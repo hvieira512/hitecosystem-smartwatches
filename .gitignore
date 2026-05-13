@@ -1,0 +1,40 @@
+# Composer dependencies
+/vendor/
+
+# Runtime output
+/var/
+/logs/
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+/config/ssl/*
+!/config/ssl/.gitkeep
+
+# Local databases and dumps
+*.db
+*.sqlite
+*.sqlite3
+*.sql.gz
+*.dump
+
+# PHP tooling caches and reports
+.phpunit.result.cache
+.php-cs-fixer.cache
+.phpcs-cache
+/coverage/
+/.phpunit.cache/
+
+# Docker/local override files
+docker-compose.override.yml
+
+# OS and editor files
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

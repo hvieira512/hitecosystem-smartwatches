@@ -1,0 +1,26 @@
+{
+    "name": "health/smartwatches-4g",
+    "description": "Multi-vendor 4G health watch integration platform",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "cboden/ratchet": "^0.4",
+        "react/http": "^1.11"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "scripts": {
+        "server": "php server.php",
+        "server:ws": "php bin/server-ws.php",
+        "server:api": "php bin/server-api.php",
+        "worker": "php bin/worker.php",
+        "simulate": "php simulator/simulate.php",
+        "migrate": "php bin/migrate.php --seed",
+        "purge": "php bin/purge-events.php"
+    }
+}

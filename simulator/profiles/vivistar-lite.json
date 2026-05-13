@@ -1,0 +1,43 @@
+{
+  "model": "VIVISTAR-LITE",
+  "login": {
+    "deviceModel": "VIVISTAR-LITE",
+    "firmware": "H10_V1.0",
+    "platform": "2G GSM",
+    "batteryLevel": 70
+  },
+  "dataTemplates": {
+    "AP01": {
+      "gpsStatus": "A",
+      "lat": "2232.9806N",
+      "lng": "11404.9355E",
+      "speed": "000.0",
+      "gsmSignal": "040",
+      "satellites": "005",
+      "batteryLevel": "070",
+      "lbs": {"mcc": 460, "mnc": 0, "lac": 9520, "cid": 3672}
+    },
+    "AP02": {
+      "language": "zh_cn",
+      "replyAddress": 0,
+      "baseStations": [{"mcc": 460, "mnc": 0, "lac": 9520, "cid": 3672, "dbm": 12}]
+    },
+    "AP03": {
+      "gsmSignal": "040",
+      "batteryLevel": "070",
+      "fortification": "00",
+      "workingMode": "01",
+      "steps": 2100,
+      "rollsFrequency": 30
+    },
+    "AP10": {
+      "gpsStatus": "A",
+      "lat": "2232.9806N",
+      "lng": "11404.9355E",
+      "alarmState": "01",
+      "language": "pt-pt"
+    },
+    "AP49": {"heartRate": 76},
+    "AP50": {"bodyTemperature": 36.4, "batteryLevel": 70}
+  }
+}

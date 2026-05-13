@@ -1,0 +1,72 @@
+<?php
+
+require __DIR__ . '/vendor/autoload.php';
+
+use React\EventLoop\Loop;
+use React\Socket\Server as Reactor;
+use Ratchet\Server\IoServer;
+use Ratchet\Http\HttpServer;
+use Ratchet\WebSocket\WsServer;
+use App\WebSocket\WatchServer;
+use App\Http\ApiServer;
+use App\Database\Database;
+use App\Redis\Client as RedisClient;
+
+$config = json_decode(
+    file_get_contents(__DIR__ . '/config/server.json'),
+    true
+);
+
+$wsPort = $config['websocket']['port'] ?? 8080;
+$wsHost = $config['websocket']['host'] ?? '0.0.0.0';
+$apiPort = $config['api']['port'] ?? 8081;
+$apiHost = $config['api']['host'] ?? '0.0.0.0';
+$caps = json_decode(file_get_contents(__DIR__ . '/config/capabilities.json'), true) ?? [];
+
+// --- MySQL ---
+
+$dbConfig = $config['database'] ?? null;
+$db = null;
+if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
+    try {
+        $db = new Database($dbConfig);
+        echo "[DB] Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}\n";
+    } catch (\PDOException $e) {
+        echo "[DB] Aviso: sem MySQL (" . $e->getMessage() . "). A usar ficheiros JSON.\n";
+    }
+}
+
+// --- Redis ---
+
+$redisConfig = $config['redis'] ?? [];
+$redisHost = getenv('REDIS_HOST') ?: ($redisConfig['host'] ?? '');
+$redis = null;
+if ($redisHost !== '') {
+    $redis = new RedisClient($redisConfig);
+}
+
+// --- Event Loop ---
+
+$loop = Loop::get();
+
+$watchServer = new WatchServer($db, $redis);
+
+$wsApp = new HttpServer(
+    new WsServer($watchServer)
+);
+$wsSocket = new Reactor("$wsHost:$wsPort", $loop);
+$wsServer = new IoServer($wsApp, $wsSocket, $loop);
+
+$apiServer = new ApiServer($watchServer, $loop, $apiPort, $apiHost);
+
+// Nota: a persistencia de eventos Redis Stream -> MySQL e feita pelo worker dedicado
+// (bin/worker.php) usando consumer groups XREADGROUP.
+
+echo "============================================\n";
+echo "  Servidor Multi-Vendor Relogios 4G\n";
+echo "  WebSocket: ws://$wsHost:$wsPort\n";
+echo "  HTTP API:  http://$apiHost:$apiPort\n";
+echo "  Modelos:   " . implode(', ', array_keys($caps)) . "\n";
+echo "============================================\n";
+
+$loop->run();
