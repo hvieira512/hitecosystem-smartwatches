@@ -5,10 +5,7 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use App\Database\Database;
 
-$config = json_decode(
-    file_get_contents(__DIR__ . '/../config/server.json'),
-    true
-);
+$config = \App\Config::load()->all();
 $dbConfig = $config['database'] ?? null;
 
 $help = <<<HELP

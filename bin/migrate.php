@@ -10,11 +10,11 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$config = json_decode(file_get_contents(__DIR__ . '/../config/server.json'), true);
+$config = \App\Config::load()->all();
 $dbConfig = $config['database'] ?? null;
 
 if (!$dbConfig) {
-    echo "[ERRO] Sem configuracao 'database' em config/server.json\n";
+    echo "[ERRO] Sem configuracao 'database'. Defina variaveis de ambiente DB_*\n";
     exit(1);
 }
 
@@ -22,7 +22,7 @@ try {
     $db = new App\Database\Database($dbConfig);
 } catch (\PDOException $e) {
     echo "[ERRO] Falha ao ligar ao MySQL: " . $e->getMessage() . "\n";
-    echo "       Verifique as credenciais em config/server.json\n";
+    echo "       Verifique as credenciais em .env\n";
     exit(1);
 }
 

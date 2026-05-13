@@ -6,10 +6,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use App\Database\Database;
 use App\Redis\Client as RedisClient;
 
-$config = json_decode(
-    file_get_contents(__DIR__ . '/../config/server.json'),
-    true
-);
+$config = \App\Config::load()->all();
 $dbConfig = $config['database'] ?? null;
 $redisConfig = $config['redis'] ?? [];
 

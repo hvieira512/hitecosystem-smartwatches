@@ -42,14 +42,11 @@ services:
     volumes:
       - .:/app
       - /app/vendor
+    env_file:
+      - .env
     environment:
       DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: health_watches
-      DB_USER: health
-      DB_PASS: health_secret
       REDIS_HOST: redis
-      REDIS_PORT: 6379
     depends_on:
       mysql:
         condition: service_healthy
@@ -66,14 +63,11 @@ services:
     volumes:
       - .:/app
       - /app/vendor
+    env_file:
+      - .env
     environment:
       DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: health_watches
-      DB_USER: health
-      DB_PASS: health_secret
       REDIS_HOST: redis
-      REDIS_PORT: 6379
       WS_SERVER_URL: ws://ws:8080
     depends_on:
       mysql:
@@ -89,14 +83,11 @@ services:
     volumes:
       - .:/app
       - /app/vendor
+    env_file:
+      - .env
     environment:
       DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: health_watches
-      DB_USER: health
-      DB_PASS: health_secret
       REDIS_HOST: redis
-      REDIS_PORT: 6379
     depends_on:
       mysql:
         condition: service_healthy

@@ -9,10 +9,7 @@ use App\Http\ApiServer;
 use App\Database\Database;
 use App\Redis\Client as RedisClient;
 
-$config = json_decode(
-    file_get_contents(__DIR__ . '/../config/server.json'),
-    true
-);
+$config = \App\Config::load()->all();
 
 $apiPort = $config['api']['port'] ?? 8081;
 $apiHost = $config['api']['host'] ?? '0.0.0.0';

@@ -12,10 +12,7 @@ use App\WebSocket\WatchServer;
 use App\Database\Database;
 use App\Redis\Client as RedisClient;
 
-$config = json_decode(
-    file_get_contents(__DIR__ . '/../config/server.json'),
-    true
-);
+$config = \App\Config::load()->all();
 
 $wsPort = $config['websocket']['port'] ?? 8080;
 $wsHost = $config['websocket']['host'] ?? '0.0.0.0';
