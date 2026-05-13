@@ -4,6 +4,7 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use App\Database\Database;
+use App\Repository\EventRepository;
 use App\Redis\Client as RedisClient;
 
 $config = \App\Config::load()->all();
@@ -25,7 +26,8 @@ if (!$dbConfig || $dbConfig['host'] === '' || $dbConfig['name'] === '') {
     exit(1);
 }
 try {
-    $db = new Database($dbConfig);
+    $db = Database::connect($dbConfig);
+    $eventsRepo = new EventRepository($db->pdo());
     echo "[Worker] MySQL ligado a {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}\n";
 } catch (\PDOException $e) {
     echo "[Worker] ERRO: MySQL indisponivel (" . $e->getMessage() . "). A encerrar.\n";
@@ -89,7 +91,7 @@ while ($running) {
     $ackIds = [];
     foreach ($messages as $event) {
         try {
-            $db->eventInsert($event);
+            $eventsRepo->insert($event);
             $ackIds[] = $event['streamId'];
             $totalProcessed++;
 

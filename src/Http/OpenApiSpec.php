@@ -289,7 +289,6 @@ class OpenApiSpec
                             'label' => ['type' => 'string', 'nullable' => true, 'example' => 'Relogio Joao (Wonlex Pro)'],
                             'model' => ['$ref' => '#/components/schemas/Model'],
                             'status' => ['$ref' => '#/components/schemas/DeviceStatus'],
-                            'registeredAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
                         ],
                     ],
                     'Model' => [
@@ -305,7 +304,6 @@ class OpenApiSpec
                     'DeviceStatus' => [
                         'type' => 'object',
                         'properties' => [
-                            'enabled' => ['type' => 'boolean', 'example' => true],
                             'online' => ['type' => 'boolean', 'example' => false],
                         ],
                     ],

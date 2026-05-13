@@ -21,7 +21,7 @@ $dbConfig = $config['database'] ?? null;
 $db = null;
 if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
     try {
-        $db = new Database($dbConfig);
+        $db = Database::connect($dbConfig);
         echo "[DB] Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}\n";
     } catch (\PDOException $e) {
         echo "[DB] Aviso: sem MySQL (" . $e->getMessage() . ").\n";
@@ -49,7 +49,7 @@ $apiServer = new ApiServer(
     loop: $loop,
     port: $apiPort,
     host: $apiHost,
-    db: $db,
+    pdo: $db?->pdo(),
     redis: $redis,
     wsServerUrl: $wsServerUrl,
 );

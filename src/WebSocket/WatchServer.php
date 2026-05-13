@@ -6,7 +6,7 @@ use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
 use App\Registry\Whitelist;
 use App\Registry\DeviceCapabilities;
-use App\Database\Database;
+use App\Repository\EventRepository;
 use App\Redis\Client as RedisClient;
 
 class WatchServer implements MessageComponentInterface
@@ -18,12 +18,12 @@ class WatchServer implements MessageComponentInterface
     private array $eventHistory;   // recent passive events
     private int $nextEventId;
     private Whitelist $whitelist;
-    private ?Database $db;
+    private ?EventRepository $eventsRepo;
     private ?RedisClient $redis;
 
-    public function __construct(?Database $db = null, ?RedisClient $redis = null)
+    public function __construct(?\PDO $pdo = null, ?RedisClient $redis = null)
     {
-        $this->db = $db;
+        $this->eventsRepo = $pdo ? new EventRepository($pdo) : null;
         $this->redis = $redis;
         $this->connections = new \SplObjectStorage();
         $this->sessions = [];
@@ -31,16 +31,16 @@ class WatchServer implements MessageComponentInterface
         $this->deviceData = [];
         $this->eventHistory = [];
         $this->nextEventId = 1;
-        $this->whitelist = new Whitelist(db: $db);
+        $this->whitelist = new Whitelist(pdo: $pdo);
 
-        if ($this->db) {
+        if ($this->eventsRepo) {
             $this->loadDeviceDataFromDatabase();
         }
     }
 
     private function loadDeviceDataFromDatabase(): void
     {
-        $this->deviceData = $this->db->eventLatestForAllImeis();
+        $this->deviceData = $this->eventsRepo->latestForAllImeis();
         if (!empty($this->deviceData)) {
             echo "[WatchServer] Carregados " . count($this->deviceData)
                 . " eventos recentes da base de dados.\n";
@@ -397,8 +397,8 @@ class WatchServer implements MessageComponentInterface
             $streamId = $this->redis->eventPush($event);
             $parts = explode('-', $streamId);
             $event['id'] = (int)$parts[0];
-        } elseif ($this->db) {
-            $event['id'] = $this->db->eventInsert($event);
+        } elseif ($this->eventsRepo) {
+            $event['id'] = $this->eventsRepo->insert($event);
         } else {
             $event['id'] = $this->nextEventId++;
         }
@@ -446,8 +446,8 @@ class WatchServer implements MessageComponentInterface
 
     public function getRecentEvents(int $limit = 50, ?int $afterId = null): array
     {
-        if ($this->db) {
-            return $this->db->eventFindRecent($limit, $afterId);
+        if ($this->eventsRepo) {
+            return $this->eventsRepo->findRecent($limit, $afterId);
         }
 
         $events = $this->eventHistory;

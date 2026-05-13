@@ -2,24 +2,27 @@
 
 namespace App\Registry;
 
-use App\Database\Database;
+use App\Repository\DeviceRepository;
+use App\Database\Migrator;
 
 class Whitelist
 {
     private array $devices;
     private string $filePath;
-    private ?Database $db;
+    private ?DeviceRepository $deviceRepo;
+    private ?Migrator $migrator;
 
-    public function __construct(?string $filePath = null, ?Database $db = null)
+    public function __construct(?string $filePath = null, ?\PDO $pdo = null)
     {
         $this->filePath = $filePath ?? __DIR__ . '/../../config/whitelist.json';
-        $this->db = $db;
+        $this->deviceRepo = $pdo ? new DeviceRepository($pdo) : null;
+        $this->migrator = $pdo ? new Migrator($pdo) : null;
         $this->load();
     }
 
     private function load(): void
     {
-        if ($this->db) {
+        if ($this->deviceRepo) {
             $this->loadFromDatabase();
             return;
         }
@@ -28,7 +31,7 @@ class Whitelist
 
     private function loadFromDatabase(): void
     {
-        $rows = $this->db->deviceAll();
+        $rows = $this->deviceRepo->all();
         $this->devices = [];
 
         foreach ($rows as $row) {
@@ -41,7 +44,7 @@ class Whitelist
         }
 
         if (empty($this->devices) && file_exists($this->filePath)) {
-            $count = $this->db->seedFromWhitelistJson($this->filePath);
+            $count = $this->migrator->seedFromWhitelistJson($this->filePath);
             if ($count > 0) {
                 echo "[Whitelist] Migrados $count dispositivos de $this->filePath para MySQL\n";
                 $this->loadFromDatabase();
@@ -55,7 +58,20 @@ class Whitelist
             $this->devices = [];
             return;
         }
-        $this->devices = json_decode(file_get_contents($this->filePath), true) ?? [];
+        $raw = json_decode(file_get_contents($this->filePath), true) ?? [];
+        $this->devices = [];
+        foreach ($raw as $imei => $value) {
+            if (is_array($value)) {
+                $this->devices[$imei] = $value;
+            } else {
+                $this->devices[$imei] = [
+                    'model' => $value,
+                    'label' => '',
+                    'enabled' => true,
+                    'registered_at' => null,
+                ];
+            }
+        }
     }
 
     public function isAuthorized(string $imei): bool
@@ -89,8 +105,8 @@ class Whitelist
         ];
         $this->devices[$imei] = $data;
 
-        if ($this->db) {
-            $this->db->deviceInsert($data);
+        if ($this->deviceRepo) {
+            $this->deviceRepo->insert($data);
         } else {
             $this->saveFile();
         }
@@ -100,8 +116,8 @@ class Whitelist
     {
         unset($this->devices[$imei]);
 
-        if ($this->db) {
-            $this->db->deviceDelete($imei);
+        if ($this->deviceRepo) {
+            $this->deviceRepo->delete($imei);
         } else {
             $this->saveFile();
         }
@@ -112,8 +128,8 @@ class Whitelist
         if (isset($this->devices[$imei])) {
             $this->devices[$imei]['enabled'] = $enabled;
 
-            if ($this->db) {
-                $this->db->deviceToggle($imei, $enabled);
+            if ($this->deviceRepo) {
+                $this->deviceRepo->toggle($imei, $enabled);
             } else {
                 $this->saveFile();
             }

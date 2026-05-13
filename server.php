@@ -26,7 +26,7 @@ $dbConfig = $config['database'] ?? null;
 $db = null;
 if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
     try {
-        $db = new Database($dbConfig);
+        $db = Database::connect($dbConfig);
         echo "[DB] Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}\n";
     } catch (\PDOException $e) {
         echo "[DB] Aviso: sem MySQL (" . $e->getMessage() . "). A usar ficheiros JSON.\n";
@@ -46,7 +46,7 @@ if ($redisHost !== '') {
 
 $loop = Loop::get();
 
-$watchServer = new WatchServer($db, $redis);
+$watchServer = new WatchServer($db?->pdo(), $redis);
 
 $wsApp = new HttpServer(
     new WsServer($watchServer)

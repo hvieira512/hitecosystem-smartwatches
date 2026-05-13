@@ -10,14 +10,17 @@ use Psr\Http\Message\ServerRequestInterface;
 use App\WebSocket\WatchServer;
 use App\Registry\Whitelist;
 use App\Registry\DeviceCapabilities;
-use App\Database\Database;
+use App\Repository\DeviceRepository;
+use App\Repository\EventRepository;
 use App\Redis\Client as RedisClient;
 
 class ApiServer
 {
     private ?WatchServer $watchServer;
     private ?Whitelist $whitelist;
-    private ?Database $db;
+    private ?\PDO $pdo;
+    private ?DeviceRepository $deviceRepo;
+    private ?EventRepository $eventsRepo;
     private ?RedisClient $redis;
     private string $wsServerUrl;
     private HttpServer $http;
@@ -28,12 +31,14 @@ class ApiServer
         LoopInterface $loop,
         int $port,
         string $host = '0.0.0.0',
-        ?Database $db = null,
+        ?\PDO $pdo = null,
         ?RedisClient $redis = null,
         ?string $wsServerUrl = null,
     ) {
         $this->watchServer = $watchServer;
-        $this->db = $db;
+        $this->pdo = $pdo;
+        $this->deviceRepo = $pdo ? new DeviceRepository($pdo) : null;
+        $this->eventsRepo = $pdo ? new EventRepository($pdo) : null;
         $this->redis = $redis;
         $this->whitelist = null;
         $envWsServerUrl = getenv('WS_SERVER_URL');
@@ -65,7 +70,7 @@ class ApiServer
             return $this->watchServer->getWhitelist();
         }
         if ($this->whitelist === null) {
-            $this->whitelist = new Whitelist(db: $this->db);
+            $this->whitelist = new Whitelist(pdo: $this->pdo);
         }
         return $this->whitelist;
     }
@@ -75,8 +80,8 @@ class ApiServer
         if ($this->watchServer !== null) {
             return $this->watchServer->getDeviceData($imei);
         }
-        if ($this->db !== null) {
-            return $this->db->eventLatestForImei($imei);
+        if ($this->eventsRepo !== null) {
+            return $this->eventsRepo->latestForImei($imei);
         }
         return null;
     }
@@ -86,8 +91,8 @@ class ApiServer
         if ($this->watchServer !== null) {
             return $this->watchServer->getRecentEvents($limit, $afterId);
         }
-        if ($this->db !== null) {
-            return $this->db->eventFindRecent($limit, $afterId);
+        if ($this->eventsRepo !== null) {
+            return $this->eventsRepo->findRecent($limit, $afterId);
         }
         return [];
     }
@@ -512,10 +517,8 @@ class ApiServer
                 'transport' => $caps?->getTransport(),
             ],
             'status' => [
-                'enabled' => $info['enabled'] ?? $whitelist->isAuthorized($imei),
                 'online' => $this->deviceIsOnline($imei),
             ],
-            'registeredAt' => $info['registered_at'] ?? null,
         ];
     }
 
@@ -708,9 +711,9 @@ class ApiServer
             'api' => ['status' => 'ok'],
         ];
 
-        if ($this->db !== null) {
+        if ($this->deviceRepo !== null) {
             try {
-                $this->db->deviceAll();
+                $this->deviceRepo->all();
                 $services['mysql'] = ['status' => 'ok'];
             } catch (\Throwable $e) {
                 $services['mysql'] = ['status' => 'error', 'message' => $e->getMessage()];

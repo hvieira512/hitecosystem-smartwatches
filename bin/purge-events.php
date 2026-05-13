@@ -4,6 +4,8 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use App\Database\Database;
+use App\Repository\DeviceRepository;
+use App\Repository\EventRepository;
 
 $config = \App\Config::load()->all();
 $dbConfig = $config['database'] ?? null;
@@ -52,7 +54,9 @@ if (!$dbConfig || $dbConfig['host'] === '' || $dbConfig['name'] === '') {
 }
 
 try {
-    $db = new Database($dbConfig);
+    $db = Database::connect($dbConfig);
+    $devicesRepo = new DeviceRepository($db->pdo());
+    $eventsRepo = new EventRepository($db->pdo());
 } catch (\PDOException $e) {
     echo "[Purge] ERRO: MySQL indisponivel (" . $e->getMessage() . ").\n";
     exit(1);
@@ -65,11 +69,11 @@ if ($dryRun) {
     echo "[Purge] Modo dry-run — sem alteracoes\n";
     echo "[Purge] Eventos removiveis por dispositivo:\n";
 
-    $imeis = $db->deviceAll();
+    $imeis = $devicesRepo->all();
     $totalRemovable = 0;
     foreach ($imeis as $device) {
         $imei = $device['imei'];
-        $count = $db->eventCount($imei);
+        $count = $eventsRepo->count($imei);
 
         if ($count > $keepPerDevice) {
             $removable = $count - $keepPerDevice;
@@ -83,5 +87,5 @@ if ($dryRun) {
     exit(0);
 }
 
-$purged = $db->eventPurgeOlderThan($cutoffDate, $keepPerDevice);
+$purged = $eventsRepo->purgeOlderThan($cutoffDate, $keepPerDevice);
 echo "[Purge] Removidos {$purged} eventos.\n";
