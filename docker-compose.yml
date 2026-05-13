@@ -41,7 +41,6 @@ services:
       - "8080:8080"
     volumes:
       - .:/app
-      - /app/vendor
     env_file:
       - .env
     environment:
@@ -62,7 +61,6 @@ services:
       - "8081:8081"
     volumes:
       - .:/app
-      - /app/vendor
     env_file:
       - .env
     environment:
@@ -82,7 +80,6 @@ services:
     command: php bin/worker.php
     volumes:
       - .:/app
-      - /app/vendor
     env_file:
       - .env
     environment:
