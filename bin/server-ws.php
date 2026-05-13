@@ -57,7 +57,7 @@ $wsServer = new IoServer($wsApp, $wsSocket, $loop);
 
 if ($redis !== null && $redis->isAvailable()) {
     $redis->xGroupCreate('cmd:worker', 'cmd:stream', '0', true);
-    echo "[WS-Cmd] Grupo 'cmd:worker' pronto no stream 'cmd:stream'\n";
+    Logger::channel('ws-cmd')->info("Grupo 'cmd:worker' pronto no stream 'cmd:stream'");
 
     $loop->addPeriodicTimer(0.5, function () use ($redis, $watchServer) {
         try {
@@ -76,7 +76,7 @@ if ($redis !== null && $redis->isAvailable()) {
                     $sent = $watchServer->sendCommand($imei, $type, $data);
                 }
 
-                echo "[WS-Cmd] IMEI=$imei type=$type " . ($sent ? 'enviado' : 'falhou') . "\n";
+                Logger::channel('ws-cmd')->info("IMEI=$imei type=$type " . ($sent ? 'enviado' : 'falhou'));
                 $ackIds[] = $cmd['streamId'];
             }
 
@@ -84,15 +84,13 @@ if ($redis !== null && $redis->isAvailable()) {
                 $redis->xAck('cmd:stream', 'cmd:worker', $ackIds);
             }
         } catch (\Throwable $e) {
-            echo "[WS-Cmd] Erro: {$e->getMessage()}\n";
+            Logger::channel('ws-cmd')->error("Erro: {$e->getMessage()}");
         }
     });
-    echo "[WS-Cmd] Ativo: Redis Stream -> WebSocket commands\n";
+    Logger::channel('ws-cmd')->info('Ativo: Redis Stream -> WebSocket commands');
 }
 
-echo "============================================\n";
-echo "  WebSocket Server (separado)\n";
-echo "  ws://$wsHost:$wsPort\n";
-echo "============================================\n";
+Logger::channel('app')->info("=== WebSocket Server (separado) ===");
+Logger::channel('app')->info("ws://$wsHost:$wsPort");
 
 $loop->run();

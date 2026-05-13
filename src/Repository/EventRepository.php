@@ -98,12 +98,13 @@ class EventRepository
 
     public function latestForAllImeis(): array
     {
+        $cols = 'e.' . str_replace(', ', ', e.', self::COLUMNS);
         $stmt = $this->pdo->query(
-            'SELECT e.' . self::COLUMNS . ' FROM device_events e
+            "SELECT {$cols} FROM device_events e
              INNER JOIN (
                  SELECT imei, MAX(received_at) AS max_ts
                  FROM device_events GROUP BY imei
-             ) latest ON e.imei = latest.imei AND e.received_at = latest.max_ts'
+             ) latest ON e.imei = latest.imei AND e.received_at = latest.max_ts"
         );
         $rows = $stmt->fetchAll();
         $result = [];

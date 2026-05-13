@@ -60,11 +60,9 @@ $apiServer = new ApiServer($watchServer, $loop, $apiPort, $apiHost);
 // Nota: a persistencia de eventos Redis Stream -> MySQL e feita pelo worker dedicado
 // (bin/worker.php) usando consumer groups XREADGROUP.
 
-echo "============================================\n";
-echo "  Servidor Multi-Vendor Relogios 4G\n";
-echo "  WebSocket: ws://$wsHost:$wsPort\n";
-echo "  HTTP API:  http://$apiHost:$apiPort\n";
-echo "  Modelos:   " . implode(', ', array_keys($caps)) . "\n";
-echo "============================================\n";
+Logger::channel('app')->info("=== Servidor Multi-Vendor Relogios 4G ===");
+Logger::channel('app')->info("WebSocket: ws://$wsHost:$wsPort");
+Logger::channel('app')->info("HTTP API:  http://$apiHost:$apiPort");
+Logger::channel('app')->info("Modelos:   " . implode(', ', array_keys($caps)));
 
 $loop->run();

@@ -24,8 +24,7 @@ if (!$dbConfig) {
 try {
     $pdo = \App\Database\Database::connect($dbConfig)->pdo();
 } catch (\PDOException $e) {
-    Logger::channel('db')->error('Falha ao ligar ao MySQL: ' . $e->getMessage());
-    echo "       Verifique as credenciais em .env\n";
+    Logger::channel('db')->error('Falha ao ligar ao MySQL: ' . $e->getMessage() . '. Verifique as credenciais em .env');
     exit(1);
 }
 
@@ -36,19 +35,19 @@ $doSeed = in_array('--seed', $args) || in_array('--seed-only', $args);
 $doMigrate = !in_array('--seed-only', $args);
 
 if ($doMigrate) {
-    echo "=== A criar tabelas ===\n";
+    Logger::channel('db')->info('=== A criar tabelas ===');
     $migrator->migrate();
 }
 
 if ($doSeed) {
     $jsonPath = __DIR__ . '/../config/whitelist.json';
-    echo "=== A importar whitelist de $jsonPath ===\n";
+    Logger::channel('db')->info("=== A importar whitelist de $jsonPath ===");
     $count = $migrator->seedFromWhitelistJson($jsonPath);
-    echo "Importados $count dispositivos.\n";
+    Logger::channel('db')->info("Importados $count dispositivos.");
 }
 
 if (!$doMigrate && !$doSeed) {
-    echo "Nada foi feito. Use --seed para criar tabelas e importar.\n";
+    Logger::channel('db')->info('Nada foi feito. Use --seed para criar tabelas e importar.');
 }
 
-echo "Concluido.\n";
+Logger::channel('db')->info('Concluido.');

@@ -44,7 +44,7 @@ foreach ($args as $arg) {
         $keepPerDevice = (int)$m[1];
         continue;
     }
-    echo "Unknown option: $arg\n";
+    Logger::channel('purge')->warning("Unknown option: $arg");
     echo $help;
     exit(1);
 }
@@ -78,13 +78,12 @@ if ($dryRun) {
 
         if ($count > $keepPerDevice) {
             $removable = $count - $keepPerDevice;
-            echo "  $imei: $count eventos, $removable removiveis\n";
+            Logger::channel('purge')->info("  $imei: $count eventos, $removable removiveis");
             $totalRemovable += $removable;
         }
     }
 
-    $oldCount = 'N/A (purged during per-device cleanup)';
-    echo "\nTotal removivel: ~{$totalRemovable} eventos\n";
+    Logger::channel('purge')->info("Total removivel: ~{$totalRemovable} eventos");
     exit(0);
 }
 

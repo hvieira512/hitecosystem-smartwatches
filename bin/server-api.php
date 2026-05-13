@@ -55,9 +55,7 @@ $apiServer = new ApiServer(
     wsServerUrl: $wsServerUrl,
 );
 
-echo "============================================\n";
-echo "  HTTP API Server (separado)\n";
-echo "  http://$apiHost:$apiPort\n";
-echo "============================================\n";
+Logger::channel('app')->info("=== HTTP API Server (separado) ===");
+Logger::channel('app')->info("http://$apiHost:$apiPort");
 
 $loop->run();
