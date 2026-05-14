@@ -4,6 +4,7 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use App\Database\Database;
+use App\Repository\DeviceRepository;
 use App\Repository\EventRepository;
 use App\Log\Logger;
 use App\Redis\Client as RedisClient;
@@ -28,7 +29,9 @@ if (!$dbConfig || $dbConfig['host'] === '' || $dbConfig['name'] === '') {
 }
 try {
     $db = Database::connect($dbConfig);
-    $eventsRepo = new EventRepository($db->pdo());
+    $pdo = $db->pdo();
+    $eventsRepo = new EventRepository($pdo);
+    $devicesRepo = new DeviceRepository($pdo);
     Logger::channel('worker')->info("Connected to MySQL at {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
 } catch (\PDOException $e) {
     Logger::channel('worker')->error('MySQL unavailable (' . $e->getMessage() . '). Shutting down');
@@ -92,6 +95,7 @@ while ($running) {
     $ackIds = [];
     foreach ($messages as $event) {
         try {
+            $devicesRepo->ensureExists($event['imei']);
             $eventsRepo->insert($event);
             $ackIds[] = $event['streamId'];
             $totalProcessed++;

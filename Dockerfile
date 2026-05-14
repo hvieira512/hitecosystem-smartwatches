@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     unzip \
     libonig-dev \
+    inotify-tools \
     && docker-php-ext-install -j$(nproc) \
         pdo_mysql \
         sockets \

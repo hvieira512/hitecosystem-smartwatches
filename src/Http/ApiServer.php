@@ -10,6 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use App\WebSocket\WatchServer;
 use App\Registry\Whitelist;
 use App\Registry\DeviceCapabilities;
+use App\Repository\ClientRepository;
 use App\Repository\DeviceRepository;
 use App\Repository\EventRepository;
 use App\Log\Logger;
@@ -20,6 +21,7 @@ class ApiServer
     private ?WatchServer $watchServer;
     private ?Whitelist $whitelist;
     private ?\PDO $pdo;
+    private ?ClientRepository $clientRepo;
     private ?DeviceRepository $deviceRepo;
     private ?EventRepository $eventsRepo;
     private ?RedisClient $redis;
@@ -39,6 +41,7 @@ class ApiServer
     ) {
         $this->watchServer = $watchServer;
         $this->pdo = $pdo;
+        $this->clientRepo = $pdo ? new ClientRepository($pdo) : null;
         $this->deviceRepo = $pdo ? new DeviceRepository($pdo) : null;
         $this->eventsRepo = $pdo ? new EventRepository($pdo) : null;
         $this->redis = $redis;
@@ -174,6 +177,142 @@ class ApiServer
         return $sent ? $type : null;
     }
 
+    // --- Client Endpoints ---
+
+    private function listClients(): Response
+    {
+        if ($this->clientRepo === null) {
+            return $this->errorResponse('mysql_unavailable', 'MySQL is not available', 503);
+        }
+
+        $clients = array_map(fn(array $row): array => $this->clientResource($row), $this->clientRepo->all());
+
+        return $this->jsonResponse([
+            'data' => $clients,
+            'meta' => ['count' => count($clients)],
+        ]);
+    }
+
+    private function createClient(ServerRequestInterface $request): Response
+    {
+        if ($this->clientRepo === null) {
+            return $this->errorResponse('mysql_unavailable', 'MySQL is not available', 503);
+        }
+
+        $body = json_decode((string)$request->getBody(), true);
+        if (!$body || !isset($body['name']) || trim((string)$body['name']) === '') {
+            return $this->errorResponse('invalid_request', 'The "name" field is required', 400);
+        }
+
+        $id = $this->clientRepo->insert(trim($body['name']));
+        $client = $this->clientRepo->find($id);
+
+        return $this->jsonResponse([
+            'data' => $this->clientResource($client),
+        ], 201);
+    }
+
+    private function getClient(int $id): Response
+    {
+        if ($this->clientRepo === null) {
+            return $this->errorResponse('mysql_unavailable', 'MySQL is not available', 503);
+        }
+
+        $client = $this->clientRepo->find($id);
+        if (!$client) {
+            return $this->errorResponse('client_not_found', 'Client not found', 404);
+        }
+
+        return $this->jsonResponse([
+            'data' => $this->clientResource($client),
+        ]);
+    }
+
+    private function updateClient(int $id, ServerRequestInterface $request): Response
+    {
+        if ($this->clientRepo === null) {
+            return $this->errorResponse('mysql_unavailable', 'MySQL is not available', 503);
+        }
+
+        $client = $this->clientRepo->find($id);
+        if (!$client) {
+            return $this->errorResponse('client_not_found', 'Client not found', 404);
+        }
+
+        $body = json_decode((string)$request->getBody(), true);
+        if (!$body || !isset($body['name']) || trim((string)$body['name']) === '') {
+            return $this->errorResponse('invalid_request', 'The "name" field is required', 400);
+        }
+
+        $this->clientRepo->update($id, trim($body['name']));
+        $client = $this->clientRepo->find($id);
+
+        return $this->jsonResponse([
+            'data' => $this->clientResource($client),
+        ]);
+    }
+
+    private function deleteClient(int $id): Response
+    {
+        if ($this->clientRepo === null) {
+            return $this->errorResponse('mysql_unavailable', 'MySQL is not available', 503);
+        }
+
+        $client = $this->clientRepo->find($id);
+        if (!$client) {
+            return $this->errorResponse('client_not_found', 'Client not found', 404);
+        }
+
+        $this->clientRepo->delete($id);
+
+        return $this->jsonResponse([
+            'status' => 'deleted',
+            'data' => $this->clientResource($client),
+        ]);
+    }
+
+    private function clientDevices(int $clientId): Response
+    {
+        if ($this->deviceRepo === null) {
+            return $this->errorResponse('mysql_unavailable', 'MySQL is not available', 503);
+        }
+
+        $rows = $this->deviceRepo->all($clientId);
+        $devices = [];
+        foreach ($rows as $row) {
+            $info = [
+                'client_id' => $row['client_id'],
+                'client_name' => $row['client_name'],
+                'model' => $row['model'],
+                'enabled' => $row['enabled'],
+                'registered_at' => $row['registered_at'],
+            ];
+            $devices[] = [
+                'device' => $this->deviceResource($row['imei'], $info),
+                'links' => $this->deviceLinks($row['imei']),
+            ];
+        }
+
+        return $this->jsonResponse([
+            'data' => $devices,
+            'meta' => ['count' => count($devices)],
+        ]);
+    }
+
+    private function clientResource(array $client): array
+    {
+        return [
+            'id' => (int)$client['id'],
+            'name' => $client['name'],
+            'createdAt' => $client['created_at'],
+            'updatedAt' => $client['updated_at'],
+            'links' => [
+                'self' => '/clients/' . $client['id'],
+                'devices' => '/clients/' . $client['id'] . '/devices',
+            ],
+        ];
+    }
+
     // --- Request Handling ---
 
     private function handleRequest(ServerRequestInterface $request): Response
@@ -193,7 +332,18 @@ class ApiServer
 
         try {
             return match (true) {
-                $method === 'GET' && $path === '/devices' => $this->listDevices(),
+                $method === 'GET' && $path === '/devices' => $this->listDevices($request),
+                $method === 'POST' && $path === '/devices' => $this->createDevice($request),
+                $method === 'PUT' && preg_match('#^/devices/([^/]+)$#', $path, $m) === 1
+                    => $this->updateDevice($m[1], $request),
+                $method === 'DELETE' && preg_match('#^/devices/([^/]+)$#', $path, $m) === 1
+                    => $this->deleteDevice($m[1]),
+                $method === 'GET' && $path === '/clients' => $this->listClients(),
+                $method === 'POST' && $path === '/clients' => $this->createClient($request),
+                $method === 'GET' && preg_match('#^/clients/(\d+)$#', $path, $m) === 1 => $this->getClient((int)$m[1]),
+                $method === 'PUT' && preg_match('#^/clients/(\d+)$#', $path, $m) === 1 => $this->updateClient((int)$m[1], $request),
+                $method === 'DELETE' && preg_match('#^/clients/(\d+)$#', $path, $m) === 1 => $this->deleteClient((int)$m[1]),
+                $method === 'GET' && preg_match('#^/clients/(\d+)/devices$#', $path, $m) === 1 => $this->clientDevices((int)$m[1]),
                 $method === 'GET' && $path === '/events/recent' => $this->recentEvents($request),
                 $method === 'GET' && preg_match('#^/devices/([^/]+)/events/latest$#', $path, $m) === 1
                 => $this->latestDeviceEvent($m[1]),
@@ -220,20 +370,195 @@ class ApiServer
         }
     }
 
-    private function listDevices(): Response
+    private function listDevices(ServerRequestInterface $request): Response
     {
-        $whitelist = $this->whitelist();
-        $devices = [];
-        foreach ($whitelist->all() as $imei => $info) {
-            $devices[] = [
-                'device' => $this->deviceResource($imei, $info),
-                'links' => $this->deviceLinks($imei),
-            ];
+        $query = $request->getQueryParams();
+        $clientId = isset($query['client_id']) ? (int)$query['client_id'] : null;
+
+        if ($clientId !== null && $this->deviceRepo !== null) {
+            $rows = $this->deviceRepo->all($clientId);
+            $devices = [];
+            foreach ($rows as $row) {
+                $info = [
+                    'client_id' => $row['client_id'],
+                    'client_name' => $row['client_name'],
+                    'model' => $row['model'],
+                    'enabled' => $row['enabled'],
+                    'registered_at' => $row['registered_at'],
+                ];
+                $devices[] = [
+                    'device' => $this->deviceResource($row['imei'], $info),
+                    'links' => $this->deviceLinks($row['imei']),
+                ];
+            }
+        } else {
+            $whitelist = $this->whitelist();
+            $devices = [];
+            foreach ($whitelist->all() as $imei => $info) {
+                $devices[] = [
+                    'device' => $this->deviceResource($imei, $info),
+                    'links' => $this->deviceLinks($imei),
+                ];
+            }
         }
 
         return $this->jsonResponse([
             'data' => $devices,
             'meta' => ['count' => count($devices)],
+        ]);
+    }
+
+    private function createDevice(ServerRequestInterface $request): Response
+    {
+        $whitelist = $this->whitelist();
+        $body = json_decode((string)$request->getBody(), true);
+
+        if (!$body || !isset($body['imei']) || !isset($body['model'])) {
+            return $this->errorResponse(
+                'invalid_request',
+                'Fields "imei" and "model" are required',
+                400
+            );
+        }
+
+        $imei = trim($body['imei']);
+        $model = trim($body['model']);
+        $clientId = isset($body['client_id']) ? (int)$body['client_id'] : null;
+        $enabled = isset($body['enabled']) ? (bool)$body['enabled'] : true;
+
+        if ($whitelist->isAuthorized($imei)) {
+            return $this->errorResponse(
+                'device_already_exists',
+                "Device $imei is already registered",
+                409
+            );
+        }
+
+        $caps = DeviceCapabilities::forModel($model);
+        if (!$caps) {
+            return $this->errorResponse(
+                'model_not_found',
+                "Unknown device model: $model",
+                400,
+                ['availableModels' => DeviceCapabilities::allModels()]
+            );
+        }
+
+        if ($clientId !== null && $this->clientRepo !== null) {
+            $client = $this->clientRepo->find($clientId);
+            if (!$client) {
+                return $this->errorResponse(
+                    'client_not_found',
+                    "Client $clientId not found",
+                    404
+                );
+            }
+        }
+
+        $whitelist->register($imei, $model, $clientId, $enabled);
+
+        Logger::channel('api')->info("Device registered: IMEI=$imei model=$model client_id=$clientId");
+
+        return $this->jsonResponse([
+            'device' => $this->deviceResource($imei),
+        ], 201);
+    }
+
+    private function updateDevice(string $imei, ServerRequestInterface $request): Response
+    {
+        $whitelist = $this->whitelist();
+        $all = $whitelist->all();
+
+        if (!isset($all[$imei])) {
+            return $this->errorResponse(
+                'device_not_found',
+                'Device not found',
+                404
+            );
+        }
+
+        $body = json_decode((string)$request->getBody(), true);
+        if (!$body) {
+            return $this->errorResponse(
+                'invalid_request',
+                'Request body is required',
+                400
+            );
+        }
+
+        $data = [];
+
+        if (isset($body['model'])) {
+            $model = trim($body['model']);
+            $caps = DeviceCapabilities::forModel($model);
+            if (!$caps) {
+                return $this->errorResponse(
+                    'model_not_found',
+                    "Unknown device model: $model",
+                    400,
+                    ['availableModels' => DeviceCapabilities::allModels()]
+                );
+            }
+            $data['model'] = $model;
+        }
+
+        if (array_key_exists('client_id', $body)) {
+            $clientId = $body['client_id'] !== null ? (int)$body['client_id'] : null;
+            if ($clientId !== null && $this->clientRepo !== null) {
+                $client = $this->clientRepo->find($clientId);
+                if (!$client) {
+                    return $this->errorResponse(
+                        'client_not_found',
+                        "Client $clientId not found",
+                        404
+                    );
+                }
+            }
+            $data['client_id'] = $clientId;
+        }
+
+        if (isset($body['enabled'])) {
+            $data['enabled'] = (bool)$body['enabled'];
+        }
+
+        if (empty($data)) {
+            return $this->errorResponse(
+                'invalid_request',
+                'At least one field (model, client_id, enabled) must be provided',
+                400
+            );
+        }
+
+        $whitelist->update($imei, $data);
+
+        Logger::channel('api')->info("Device updated: IMEI=$imei data=" . json_encode($data));
+
+        return $this->jsonResponse([
+            'device' => $this->deviceResource($imei),
+        ]);
+    }
+
+    private function deleteDevice(string $imei): Response
+    {
+        $whitelist = $this->whitelist();
+        $all = $whitelist->all();
+
+        if (!isset($all[$imei])) {
+            return $this->errorResponse(
+                'device_not_found',
+                'Device not found',
+                404
+            );
+        }
+
+        $model = $whitelist->getModel($imei);
+        $whitelist->unregister($imei);
+
+        Logger::channel('api')->info("Device unregistered: IMEI=$imei model=$model");
+
+        return $this->jsonResponse([
+            'status' => 'deleted',
+            'imei' => $imei,
         ]);
     }
 
@@ -674,8 +999,15 @@ class ApiServer
         $model = $info['model'] ?? $whitelist->getModel($imei);
         $caps = $model ? DeviceCapabilities::forModel($model) : null;
 
+        $clientId = $info['client_id'] ?? $whitelist->getClientId($imei);
+        $clientName = $info['client_name'] ?? null;
+
         return [
             'imei' => $imei,
+            'client' => $clientId !== null ? [
+                'id' => $clientId,
+                'name' => $clientName,
+            ] : null,
             'model' => [
                 'id' => $model,
                 'supplier' => $caps?->getSupplier(),

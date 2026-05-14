@@ -1,4 +1,4 @@
-.PHONY: up down build rebuild logs shell migrate simulate worker worker-logs ws api nginx nginx-logs purge ssl-setup redis-cli ps
+.PHONY: up down build rebuild logs shell migrate simulate worker worker-logs ws api nginx nginx-logs purge ssl-setup redis-cli ps dev dev-ws dev-api
 
 up:
 	docker compose up -d
@@ -25,6 +25,9 @@ nginx-shell:
 
 migrate:
 	docker compose exec ws php bin/migrate.php --seed 2>/dev/null || docker compose exec api php bin/migrate.php --seed
+
+seed-clients:
+	docker compose exec ws php bin/migrate.php --seed-clients 2>/dev/null || docker compose exec api php bin/migrate.php --seed-clients
 
 simulate:
 	docker compose exec ws php simulator/simulate.php $(ARGS)
@@ -65,3 +68,13 @@ redis-cli:
 
 ps:
 	docker compose ps
+
+dev-ws:
+	docker compose stop ws 2>/dev/null; \
+	docker compose run --rm --service-ports --name health-ws-dev ws bin/dev.sh php bin/server-ws.php
+
+dev-api:
+	docker compose stop api 2>/dev/null; \
+	docker compose run --rm --service-ports --name health-api-dev api bin/dev.sh php bin/server-api.php
+
+dev: dev-ws dev-api

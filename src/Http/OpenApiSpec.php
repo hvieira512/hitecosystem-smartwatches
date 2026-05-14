@@ -30,6 +30,15 @@ class OpenApiSpec
                         'summary' => 'List devices',
                         'operationId' => 'listDevices',
                         'tags' => ['Devices'],
+                        'parameters' => [
+                            [
+                                'name' => 'client_id',
+                                'in' => 'query',
+                                'required' => false,
+                                'description' => 'Filter devices by client ID',
+                                'schema' => ['type' => 'integer', 'example' => 1],
+                            ],
+                        ],
                         'responses' => [
                             '200' => [
                                 'description' => 'List of registered devices',
@@ -39,6 +48,227 @@ class OpenApiSpec
                                     ],
                                 ],
                             ],
+                        ],
+                    ],
+                    'post' => [
+                        'summary' => 'Register a new device',
+                        'operationId' => 'createDevice',
+                        'tags' => ['Devices'],
+                        'requestBody' => [
+                            'required' => true,
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => ['$ref' => '#/components/schemas/DeviceCreateRequest'],
+                                ],
+                            ],
+                        ],
+                        'responses' => [
+                            '201' => [
+                                'description' => 'Device registered',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DeviceCreateResponse'],
+                                    ],
+                                ],
+                            ],
+                            '400' => ['$ref' => '#/components/responses/Error'],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                            '409' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                ],
+                '/devices/{imei}' => [
+                    'put' => [
+                        'summary' => 'Update device',
+                        'operationId' => 'updateDevice',
+                        'tags' => ['Devices'],
+                        'parameters' => [$imeiParam],
+                        'requestBody' => [
+                            'required' => true,
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => ['$ref' => '#/components/schemas/DeviceUpdateRequest'],
+                                ],
+                            ],
+                        ],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'Device updated',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DeviceUpdateResponse'],
+                                    ],
+                                ],
+                            ],
+                            '400' => ['$ref' => '#/components/responses/Error'],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                    'delete' => [
+                        'summary' => 'Unregister device',
+                        'operationId' => 'deleteDevice',
+                        'tags' => ['Devices'],
+                        'parameters' => [$imeiParam],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'Device unregistered',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DeviceDeleteResponse'],
+                                    ],
+                                ],
+                            ],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                ],
+                '/clients' => [
+                    'get' => [
+                        'summary' => 'List clients',
+                        'operationId' => 'listClients',
+                        'tags' => ['Clients'],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'List of clients',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/ClientListResponse'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'post' => [
+                        'summary' => 'Create a client',
+                        'operationId' => 'createClient',
+                        'tags' => ['Clients'],
+                        'requestBody' => [
+                            'required' => true,
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => ['$ref' => '#/components/schemas/ClientCreateRequest'],
+                                ],
+                            ],
+                        ],
+                        'responses' => [
+                            '201' => [
+                                'description' => 'Client created',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/ClientResponse'],
+                                    ],
+                                ],
+                            ],
+                            '400' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                ],
+                '/clients/{id}' => [
+                    'get' => [
+                        'summary' => 'Get client details',
+                        'operationId' => 'getClient',
+                        'tags' => ['Clients'],
+                        'parameters' => [
+                            [
+                                'name' => 'id',
+                                'in' => 'path',
+                                'required' => true,
+                                'schema' => ['type' => 'integer', 'example' => 1],
+                            ],
+                        ],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'Client details',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/ClientResponse'],
+                                    ],
+                                ],
+                            ],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                    'put' => [
+                        'summary' => 'Update client',
+                        'operationId' => 'updateClient',
+                        'tags' => ['Clients'],
+                        'parameters' => [
+                            [
+                                'name' => 'id',
+                                'in' => 'path',
+                                'required' => true,
+                                'schema' => ['type' => 'integer', 'example' => 1],
+                            ],
+                        ],
+                        'requestBody' => [
+                            'required' => true,
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => ['$ref' => '#/components/schemas/ClientUpdateRequest'],
+                                ],
+                            ],
+                        ],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'Client updated',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/ClientResponse'],
+                                    ],
+                                ],
+                            ],
+                            '400' => ['$ref' => '#/components/responses/Error'],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                    'delete' => [
+                        'summary' => 'Delete client',
+                        'operationId' => 'deleteClient',
+                        'tags' => ['Clients'],
+                        'parameters' => [
+                            [
+                                'name' => 'id',
+                                'in' => 'path',
+                                'required' => true,
+                                'schema' => ['type' => 'integer', 'example' => 1],
+                            ],
+                        ],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'Client deleted',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/ClientResponse'],
+                                    ],
+                                ],
+                            ],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                ],
+                '/clients/{id}/devices' => [
+                    'get' => [
+                        'summary' => 'List devices for a client',
+                        'operationId' => 'clientDevices',
+                        'tags' => ['Clients'],
+                        'parameters' => [
+                            [
+                                'name' => 'id',
+                                'in' => 'path',
+                                'required' => true,
+                                'schema' => ['type' => 'integer', 'example' => 1],
+                            ],
+                        ],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'List of devices belonging to the client',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DeviceListResponse'],
+                                    ],
+                                ],
+                            ],
+                            '404' => ['$ref' => '#/components/responses/Error'],
                         ],
                     ],
                 ],
@@ -359,8 +589,19 @@ class OpenApiSpec
                         'type' => 'object',
                         'properties' => [
                             'imei' => ['type' => 'string', 'example' => '865028000000306'],
+                            'client' => [
+                                'nullable' => true,
+                                'allOf' => [['$ref' => '#/components/schemas/ClientRef']],
+                            ],
                             'model' => ['$ref' => '#/components/schemas/Model'],
                             'status' => ['$ref' => '#/components/schemas/DeviceStatus'],
+                        ],
+                    ],
+                    'ClientRef' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'id' => ['type' => 'integer', 'example' => 1],
+                            'name' => ['type' => 'string', 'example' => 'Default Client'],
                         ],
                     ],
                     'Model' => [
@@ -385,6 +626,43 @@ class OpenApiSpec
                             'latestEvent' => ['type' => 'string', 'example' => '/devices/865028000000306/events/latest'],
                             'features' => ['type' => 'string', 'example' => '/devices/865028000000306/features'],
                             'command' => ['type' => 'string', 'example' => '/devices/865028000000306/command'],
+                        ],
+                    ],
+                    'DeviceCreateRequest' => [
+                        'type' => 'object',
+                        'required' => ['imei', 'model'],
+                        'properties' => [
+                            'imei' => ['type' => 'string', 'example' => '865028000000310'],
+                            'model' => ['type' => 'string', 'example' => 'WONLEX-PRO'],
+                            'client_id' => ['type' => 'integer', 'nullable' => true, 'example' => 1],
+                            'enabled' => ['type' => 'boolean', 'example' => true],
+                        ],
+                    ],
+                    'DeviceCreateResponse' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'device' => ['$ref' => '#/components/schemas/Device'],
+                        ],
+                    ],
+                    'DeviceUpdateRequest' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'model' => ['type' => 'string', 'nullable' => true, 'example' => 'WONLEX-PRO'],
+                            'client_id' => ['type' => 'integer', 'nullable' => true, 'example' => 1],
+                            'enabled' => ['type' => 'boolean', 'nullable' => true, 'example' => true],
+                        ],
+                    ],
+                    'DeviceUpdateResponse' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'device' => ['$ref' => '#/components/schemas/Device'],
+                        ],
+                    ],
+                    'DeviceDeleteResponse' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'status' => ['type' => 'string', 'example' => 'deleted'],
+                            'imei' => ['type' => 'string', 'example' => '865028000000310'],
                         ],
                     ],
                     'Event' => [
@@ -532,6 +810,52 @@ class OpenApiSpec
                             'code' => ['type' => 'string', 'example' => 'device_offline'],
                             'message' => ['type' => 'string', 'example' => 'Device is offline or cannot be routed right now'],
                             'details' => ['type' => 'object', 'nullable' => true],
+                        ],
+                    ],
+                    'ClientListResponse' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'data' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Client'],
+                            ],
+                            'meta' => ['$ref' => '#/components/schemas/ListMeta'],
+                        ],
+                    ],
+                    'ClientResponse' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'data' => ['$ref' => '#/components/schemas/Client'],
+                        ],
+                    ],
+                    'ClientCreateRequest' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string', 'example' => 'Acme Health Corp'],
+                        ],
+                    ],
+                    'ClientUpdateRequest' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string', 'example' => 'Acme Health Corp'],
+                        ],
+                    ],
+                    'Client' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'id' => ['type' => 'integer', 'example' => 1],
+                            'name' => ['type' => 'string', 'example' => 'Default Client'],
+                            'createdAt' => ['type' => 'string', 'example' => '2025-01-15 10:00:00'],
+                            'updatedAt' => ['type' => 'string', 'example' => '2025-01-15 10:00:00'],
+                            'links' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'self' => ['type' => 'string', 'example' => '/clients/1'],
+                                    'devices' => ['type' => 'string', 'example' => '/clients/1/devices'],
+                                ],
+                            ],
                         ],
                     ],
                 ],
