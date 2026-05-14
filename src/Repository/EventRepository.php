@@ -5,7 +5,8 @@ namespace App\Repository;
 class EventRepository
 {
     private \PDO $pdo;
-    private const COLUMNS = 'id, imei, model, native_type, feature, native_payload, received_at, created_at';
+    private const COLUMNS = 'e.id, e.imei, d.model, e.native_type, e.feature, e.native_payload, e.received_at, e.created_at';
+    private const FROM_WITH_DEVICE = 'device_events e LEFT JOIN devices d ON d.imei = e.imei';
 
     public function __construct(\PDO $pdo)
     {
@@ -15,12 +16,11 @@ class EventRepository
     public function insert(array $event): int
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO device_events (imei, model, native_type, feature, native_payload, received_at)
-             VALUES (:imei, :model, :native_type, :feature, :native_payload, :received_at)'
+            'INSERT INTO device_events (imei, native_type, feature, native_payload, received_at)
+             VALUES (:imei, :native_type, :feature, :native_payload, :received_at)'
         );
         $stmt->execute([
             'imei' => $event['imei'],
-            'model' => $event['model'],
             'native_type' => $event['nativeType'],
             'feature' => $event['feature'],
             'native_payload' => json_encode($event['nativePayload']),
@@ -35,16 +35,16 @@ class EventRepository
         $params = [];
 
         if ($afterId !== null) {
-            $where[] = 'id > :after_id';
+            $where[] = 'e.id > :after_id';
             $params['after_id'] = $afterId;
         }
 
         if ($imei !== null) {
-            $where[] = 'imei = :imei';
+            $where[] = 'e.imei = :imei';
             $params['imei'] = $imei;
         }
 
-        $sql = 'SELECT ' . self::COLUMNS . ' FROM device_events';
+        $sql = 'SELECT ' . self::COLUMNS . ' FROM ' . self::FROM_WITH_DEVICE;
         if (!empty($where)) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
@@ -68,7 +68,7 @@ class EventRepository
     public function latestForImei(string $imei): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT ' . self::COLUMNS . ' FROM device_events WHERE imei = ? ORDER BY received_at DESC LIMIT 1'
+            'SELECT ' . self::COLUMNS . ' FROM ' . self::FROM_WITH_DEVICE . ' WHERE e.imei = ? ORDER BY e.received_at DESC LIMIT 1'
         );
         $stmt->execute([$imei]);
         $row = $stmt->fetch();
@@ -98,9 +98,8 @@ class EventRepository
 
     public function latestForAllImeis(): array
     {
-        $cols = 'e.' . str_replace(', ', ', e.', self::COLUMNS);
         $stmt = $this->pdo->query(
-            "SELECT {$cols} FROM device_events e
+            "SELECT " . self::COLUMNS . " FROM " . self::FROM_WITH_DEVICE . "
              INNER JOIN (
                  SELECT imei, MAX(received_at) AS max_ts
                  FROM device_events GROUP BY imei

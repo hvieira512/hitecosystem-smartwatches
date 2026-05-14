@@ -35,7 +35,35 @@ class Migrator
             }
         }
 
+        $this->dropColumnIfExists('devices', 'label');
+        $this->dropColumnIfExists('device_events', 'model');
+
         Logger::channel('db')->info('Migracao concluida');
+    }
+
+    private function dropColumnIfExists(string $table, string $column): void
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = ?
+               AND COLUMN_NAME = ?'
+        );
+        $stmt->execute([$table, $column]);
+
+        if ((int)$stmt->fetchColumn() === 0) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("ALTER TABLE `$table` DROP COLUMN `$column`");
+            Logger::channel('db')->info("Coluna removida: $table.$column");
+        } catch (\PDOException $e) {
+            if ((string)$e->getCode() !== '42000' || !str_contains($e->getMessage(), "Can't DROP")) {
+                throw $e;
+            }
+        }
     }
 
     public function seedFromWhitelistJson(string $jsonPath): int
@@ -51,7 +79,6 @@ class Migrator
             $repo->insert([
                 'imei' => $imei,
                 'model' => $data['model'],
-                'label' => $data['label'] ?? '',
                 'enabled' => $data['enabled'] ?? true,
                 'registered_at' => $data['registered_at'] ?? 'now',
             ]);

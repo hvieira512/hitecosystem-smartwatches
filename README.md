@@ -151,7 +151,7 @@ Cada modelo tem um perfil em `config/capabilities.json` que declara comandos pas
 ```json
 {
     "WONLEX-PRO": {
-        "label": "Wonlex 4G Health Watch (Full protocol)",
+        "name": "Wonlex 4G Health Watch (Full protocol)",
         "supplier": "Wonlex",
         "protocol": "wonlex-json",
         "transport": "websocket-json",
@@ -276,7 +276,7 @@ Cada modelo tem um perfil em `config/capabilities.json` que declara comandos pas
 
 | Campo        | Descricao                                              |
 | ------------ | ------------------------------------------------------ |
-| `label`      | Nome legivel do modelo                                 |
+| `name`       | Nome legivel do modelo                                 |
 | `supplier`   | Fabricante (Wonlex, VIVISTAR, etc.)                    |
 | `protocol`   | Identificador do protocolo nativo                      |
 | `transport`  | Tipo de transporte (websocket-json, tcp-text)          |
@@ -423,30 +423,10 @@ Apenas IMEIs registados na whitelist podem comunicar com o servidor.
 
 ```json
 {
-    "865028000000306": {
-        "model": "WONLEX-PRO",
-        "label": "Relogio Joao (Wonlex Pro)",
-        "enabled": true,
-        "registered_at": "2025-01-15T10:00:00Z"
-    },
-    "865028000000307": {
-        "model": "WONLEX-HEALTH",
-        "label": "Relogio Maria (Wonlex Health)",
-        "enabled": true,
-        "registered_at": "2025-01-20T14:30:00Z"
-    },
-    "865028000000308": {
-        "model": "VIVISTAR-CARE",
-        "label": "Relogio Antonio (VIVISTAR Care)",
-        "enabled": false,
-        "registered_at": "2025-02-01T09:00:00Z"
-    },
-    "865028000000309": {
-        "model": "VIVISTAR-LITE",
-        "label": "Relogio Sofia (VIVISTAR Lite)",
-        "enabled": true,
-        "registered_at": "2025-03-10T11:00:00Z"
-    }
+    "865028000000306": "WONLEX-PRO",
+    "865028000000307": "WONLEX-HEALTH",
+    "865028000000308": "VIVISTAR-CARE",
+    "865028000000309": "VIVISTAR-LITE"
 }
 ```
 
@@ -717,10 +697,8 @@ Todas as respostas seguem uma estrutura consistente:
         {
             "device": {
                 "imei": "865028000000306",
-                "label": "Relogio Joao (Wonlex Pro)",
                 "model": {
                     "id": "WONLEX-PRO",
-                    "label": "Wonlex 4G Health Watch (Full protocol)",
                     "supplier": "Wonlex",
                     "protocol": "wonlex-json",
                     "transport": "websocket-json"
@@ -1149,8 +1127,7 @@ class WatchServer implements MessageComponentInterface
             'timestamp' => $this->now(),
         ]);
 
-        echo "[+] Login OK: IMEI=$imei, Modelo=$model, "
-           . "Label={$this->whitelist->getLabel($imei)}, Session=$sessionToken\n";
+        echo "[+] Login OK: IMEI=$imei, Modelo=$model, Session=$sessionToken\n";
     }
 
     private function sendLoginError(ConnectionInterface $conn, string $ident, string $imei, string $msg): void
@@ -1313,14 +1290,12 @@ class Whitelist
     }
 
     public function getModel(string $imei): ?string { return $this->devices[$imei]['model'] ?? null; }
-    public function getLabel(string $imei): ?string { return $this->devices[$imei]['label'] ?? null; }
     public function all(): array { return $this->devices; }
 
-    public function register(string $imei, string $model, string $label = ''): void
+    public function register(string $imei, string $model): void
     {
         $this->devices[$imei] = [
             'model' => $model,
-            'label' => $label ?: "Device $imei",
             'enabled' => true,
             'registered_at' => date('c'),
         ];
@@ -1385,8 +1360,8 @@ class DeviceCapabilities
     }
 
     public static function allModels(): array { self::load(); return array_keys(self::$profiles); }
-    public static function modelLabel(string $model): string
-    { self::load(); return self::$profiles[$model]['label'] ?? $model; }
+    public static function modelName(string $model): string
+    { self::load(); return self::$profiles[$model]['name'] ?? $model; }
 
     public static function supportsAny(string $command): bool
     {
@@ -1417,7 +1392,7 @@ class DeviceCapabilities
     // --- Instancia ---
 
     private string $model;
-    private string $label;
+    private string $name;
     private ?string $supplier;
     private ?string $protocol;
     private ?string $transport;
@@ -1429,7 +1404,7 @@ class DeviceCapabilities
     private function __construct(string $model, array $profile)
     {
         $this->model = $model;
-        $this->label = $profile['label'] ?? $model;
+        $this->name = $profile['name'] ?? $model;
         $this->supplier = $profile['supplier'] ?? null;
         $this->protocol = $profile['protocol'] ?? null;
         $this->transport = $profile['transport'] ?? null;
@@ -1440,7 +1415,7 @@ class DeviceCapabilities
     }
 
     public function getModel(): string { return $this->model; }
-    public function getLabel(): string { return $this->label; }
+    public function getName(): string { return $this->name; }
     public function getSupplier(): ?string { return $this->supplier; }
     public function getProtocol(): ?string { return $this->protocol; }
     public function getTransport(): ?string { return $this->transport; }

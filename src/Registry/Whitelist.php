@@ -38,7 +38,6 @@ class Whitelist
         foreach ($rows as $row) {
             $this->devices[$row['imei']] = [
                 'model' => $row['model'],
-                'label' => $row['label'],
                 'enabled' => (bool)$row['enabled'],
                 'registered_at' => $row['registered_at'],
             ];
@@ -63,11 +62,14 @@ class Whitelist
         $this->devices = [];
         foreach ($raw as $imei => $value) {
             if (is_array($value)) {
-                $this->devices[$imei] = $value;
+                $this->devices[$imei] = [
+                    'model' => $value['model'] ?? '',
+                    'enabled' => $value['enabled'] ?? true,
+                    'registered_at' => $value['registered_at'] ?? null,
+                ];
             } else {
                 $this->devices[$imei] = [
                     'model' => $value,
-                    'label' => '',
                     'enabled' => true,
                     'registered_at' => null,
                 ];
@@ -85,22 +87,16 @@ class Whitelist
         return $this->devices[$imei]['model'] ?? null;
     }
 
-    public function getLabel(string $imei): ?string
-    {
-        return $this->devices[$imei]['label'] ?? null;
-    }
-
     public function all(): array
     {
         return $this->devices;
     }
 
-    public function register(string $imei, string $model, string $label = ''): void
+    public function register(string $imei, string $model): void
     {
         $data = [
             'imei' => $imei,
             'model' => $model,
-            'label' => $label ?: "Device $imei",
             'enabled' => true,
             'registered_at' => date('c'),
         ];

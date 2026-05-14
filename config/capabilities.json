@@ -1,6 +1,6 @@
 {
   "WONLEX-PRO": {
-    "label": "Wonlex 4G Health Watch (Full protocol)",
+    "name": "Wonlex 4G Health Watch (Full protocol)",
     "supplier": "Wonlex",
     "protocol": "wonlex-json",
     "transport": "websocket-json",
@@ -75,7 +75,7 @@
     }
   },
   "WONLEX-HEALTH": {
-    "label": "Wonlex 4G Health Watch (Health subset)",
+    "name": "Wonlex 4G Health Watch (Health subset)",
     "supplier": "Wonlex",
     "protocol": "wonlex-json",
     "transport": "websocket-json",
@@ -125,7 +125,7 @@
     }
   },
   "VIVISTAR-CARE": {
-    "label": "VIVISTAR Elderly Care Watch (Full protocol)",
+    "name": "VIVISTAR Elderly Care Watch (Full protocol)",
     "supplier": "VIVISTAR",
     "protocol": "vivistar-iw",
     "transport": "tcp-text",
@@ -160,7 +160,7 @@
     }
   },
   "VIVISTAR-LITE": {
-    "label": "VIVISTAR Elderly Care Watch (Basic subset)",
+    "name": "VIVISTAR Elderly Care Watch (Basic subset)",
     "supplier": "VIVISTAR",
     "protocol": "vivistar-iw",
     "transport": "tcp-text",

@@ -24,8 +24,8 @@ $command = $args['command'] ?? null;
 if (isset($args['list-models'])) {
     echo "Modelos disponiveis:\n";
     foreach (DeviceCapabilities::allModels() as $model) {
-        $label = DeviceCapabilities::modelLabel($model);
-        echo "  - $model ($label)\n";
+        $name = DeviceCapabilities::modelName($model);
+        echo "  - $model ($name)\n";
     }
     exit(0);
 }
@@ -39,7 +39,7 @@ if (isset($args['capabilities'])) {
         echo "Erro: Modelo '$model' desconhecido.\n";
         exit(1);
     }
-    echo "Modelo: $model (" . $caps->getLabel() . ")\n\n";
+    echo "Modelo: $model (" . $caps->getName() . ")\n\n";
     echo "Comandos PASSIVOS (relogio -> servidor):\n";
     foreach ($caps->getPassive() as $c) {
         echo "  - $c\n";

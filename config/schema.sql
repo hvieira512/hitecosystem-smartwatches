@@ -5,7 +5,6 @@ CREATE DATABASE IF NOT EXISTS health_watches
 CREATE TABLE IF NOT EXISTS devices (
     imei          VARCHAR(15)    NOT NULL PRIMARY KEY,
     model         VARCHAR(50)    NOT NULL,
-    label         VARCHAR(255)   NOT NULL DEFAULT '',
     enabled       TINYINT(1)     NOT NULL DEFAULT 1,
     registered_at DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -14,7 +13,6 @@ CREATE TABLE IF NOT EXISTS devices (
 CREATE TABLE IF NOT EXISTS device_events (
     id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     imei           VARCHAR(15)     NOT NULL,
-    model          VARCHAR(50)     NOT NULL,
     native_type    VARCHAR(100)    NOT NULL,
     feature        VARCHAR(50)     NULL,
     native_payload JSON            NOT NULL,

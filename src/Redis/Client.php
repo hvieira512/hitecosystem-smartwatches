@@ -108,7 +108,6 @@ class Client
                 '*',
                 [
                     'imei' => $event['imei'],
-                    'model' => $event['model'],
                     'native_type' => $event['nativeType'],
                     'feature' => $event['feature'] ?? '',
                     'native_payload' => json_encode($event['nativePayload']),
@@ -135,7 +134,6 @@ class Client
                     $events[] = [
                         'streamId' => $id,
                         'imei' => $data['imei'],
-                        'model' => $data['model'],
                         'nativeType' => $data['native_type'],
                         'feature' => $data['feature'] ?: null,
                         'nativePayload' => json_decode($data['native_payload'], true) ?? [],
@@ -201,7 +199,6 @@ class Client
                         'streamId' => $id,
                         'stream' => $streamName,
                         'imei' => $data['imei'],
-                        'model' => $data['model'],
                         'nativeType' => $data['native_type'],
                         'feature' => $data['feature'] ?? '',
                         'nativePayload' => json_decode($data['native_payload'], true) ?? [],

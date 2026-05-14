@@ -130,7 +130,6 @@ class WatchServer implements MessageComponentInterface
         if ($isPassiveUpdate) {
             $this->storeDeviceEvent($imei, [
                 'imei' => $imei,
-                'model' => $session['model'],
                 'nativeType' => $type,
                 'feature' => $caps->featureForPassive($type),
                 'nativePayload' => $this->sanitizePayload($payload['data'] ?? []),
@@ -207,9 +206,7 @@ class WatchServer implements MessageComponentInterface
             'timestamp' => $this->now(),
         ]);
 
-        Logger::channel('watch')->info("Login OK: IMEI=$imei, Modelo=$model, "
-           . "Label={$this->whitelist->getLabel($imei)}, "
-           . "Session=$sessionToken");
+        Logger::channel('watch')->info("Login OK: IMEI=$imei, Modelo=$model, Session=$sessionToken");
 
         if ($previousConn !== null && $previousConn !== $conn) {
             Logger::channel('watch')->warning("Login duplicado para IMEI=$imei; nova conexao assumiu o encaminhamento");

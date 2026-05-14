@@ -286,7 +286,6 @@ class OpenApiSpec
                         'type' => 'object',
                         'properties' => [
                             'imei' => ['type' => 'string', 'example' => '865028000000306'],
-                            'label' => ['type' => 'string', 'nullable' => true, 'example' => 'Relogio Joao (Wonlex Pro)'],
                             'model' => ['$ref' => '#/components/schemas/Model'],
                             'status' => ['$ref' => '#/components/schemas/DeviceStatus'],
                         ],
@@ -295,7 +294,6 @@ class OpenApiSpec
                         'type' => 'object',
                         'properties' => [
                             'id' => ['type' => 'string', 'example' => 'WONLEX-PRO'],
-                            'label' => ['type' => 'string', 'nullable' => true, 'example' => 'Wonlex 4G Health Watch (Full protocol)'],
                             'supplier' => ['type' => 'string', 'nullable' => true, 'example' => 'Wonlex'],
                             'protocol' => ['type' => 'string', 'nullable' => true, 'example' => 'wonlex-json'],
                             'transport' => ['type' => 'string', 'nullable' => true, 'example' => 'websocket-json'],
@@ -305,6 +303,7 @@ class OpenApiSpec
                         'type' => 'object',
                         'properties' => [
                             'online' => ['type' => 'boolean', 'example' => false],
+                            'enabled' => ['type' => 'boolean', 'example' => true],
                         ],
                     ],
                     'DeviceLinks' => [

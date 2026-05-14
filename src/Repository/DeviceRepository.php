@@ -5,7 +5,7 @@ namespace App\Repository;
 class DeviceRepository
 {
     private \PDO $pdo;
-    private const COLUMNS = 'imei, model, label, enabled, registered_at, updated_at';
+    private const COLUMNS = 'imei, model, enabled, registered_at, updated_at';
 
     public function __construct(\PDO $pdo)
     {
@@ -21,14 +21,13 @@ class DeviceRepository
     public function insert(array $data): void
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO devices (imei, model, label, enabled, registered_at)
-             VALUES (:imei, :model, :label, :enabled, :registered_at)
-             ON DUPLICATE KEY UPDATE model = VALUES(model), label = VALUES(label), enabled = VALUES(enabled)'
+            'INSERT INTO devices (imei, model, enabled, registered_at)
+             VALUES (:imei, :model, :enabled, :registered_at)
+             ON DUPLICATE KEY UPDATE model = VALUES(model), enabled = VALUES(enabled)'
         );
         $stmt->execute([
             'imei' => $data['imei'],
             'model' => $data['model'],
-            'label' => $data['label'] ?? '',
             'enabled' => isset($data['enabled']) ? ($data['enabled'] ? 1 : 0) : 1,
             'registered_at' => $this->toMysqlDatetime($data['registered_at'] ?? 'now'),
         ]);

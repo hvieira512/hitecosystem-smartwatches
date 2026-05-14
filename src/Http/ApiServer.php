@@ -509,16 +509,15 @@ class ApiServer
 
         return [
             'imei' => $imei,
-            'label' => $info['label'] ?? $whitelist->getLabel($imei),
             'model' => [
                 'id' => $model,
-                'label' => $caps?->getLabel() ?? $model,
                 'supplier' => $caps?->getSupplier(),
                 'protocol' => $caps?->getProtocol(),
                 'transport' => $caps?->getTransport(),
             ],
             'status' => [
                 'online' => $this->deviceIsOnline($imei),
+                'enabled' => (bool)($info['enabled'] ?? $whitelist->isAuthorized($imei)),
             ],
         ];
     }
@@ -1241,12 +1240,12 @@ class ApiServer
                 return `
                     <button class="device-button${active}" type="button" data-imei="${device.imei}">
                         <div class="device-title">
-                            <span>${escapeHtml(device.label)}</span>
+                            <span>${escapeHtml(device.imei)}</span>
                             <span class="badge ${statusClass}">${statusText}</span>
                         </div>
                         <div class="device-meta">
-                            ${device.imei}<br>
-                            ${escapeHtml(device.model.id)} · ${escapeHtml(device.model.protocol || '')}
+                            ${escapeHtml(device.model.id)}<br>
+                            ${escapeHtml(device.model.protocol || '')}
                         </div>
                     </button>
                 `;
@@ -1269,13 +1268,13 @@ class ApiServer
                 `<span class="feature-chip">${escapeHtml(feature)}</span>`
             )).join('');
 
-            $('quickActions').innerHTML = quickFeatures.map(([feature, label]) => {
+            $('quickActions').innerHTML = quickFeatures.map(([feature, title]) => {
                 const passiveTypes = state.features[feature]?.passiveTypes || [];
                 const nativeType = passiveTypes[0] || '';
                 const disabled = !device || !nativeType || !device.status.enabled;
                 return `
                     <button class="action" type="button" data-type="${escapeHtml(nativeType)}" ${disabled ? 'disabled' : ''}>
-                        ${escapeHtml(label)}
+                        ${escapeHtml(title)}
                     </button>
                 `;
             }).join('');
@@ -1304,7 +1303,7 @@ class ApiServer
                             <span class="badge ${isNew ? 'new' : ''}">${escapeHtml(isNew ? 'novo' : (event.nativeType || ''))}</span>
                         </div>
                         <div class="event-sub">
-                            ${escapeHtml(device.label)} · ${escapeHtml(device.imei)}<br>
+                            ${escapeHtml(device.imei)} · ${escapeHtml(device.model?.id || '')}<br>
                             ${new Date(event.receivedAt).toLocaleTimeString()}
                         </div>
                         <div class="event-sub"><pre>${escapeHtml(normalized)}</pre></div>

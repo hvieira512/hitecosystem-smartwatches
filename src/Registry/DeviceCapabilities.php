@@ -44,10 +44,10 @@ class DeviceCapabilities
         return array_keys(self::$profiles);
     }
 
-    public static function modelLabel(string $model): string
+    public static function modelName(string $model): string
     {
         self::load();
-        return self::$profiles[$model]['label'] ?? $model;
+        return self::$profiles[$model]['name'] ?? $model;
     }
 
     public static function supportsAny(string $command): bool
@@ -87,7 +87,7 @@ class DeviceCapabilities
     // --- Instancia ---
 
     private string $model;
-    private string $label;
+    private string $name;
     private ?string $supplier;
     private ?string $protocol;
     private ?string $transport;
@@ -99,7 +99,7 @@ class DeviceCapabilities
     private function __construct(string $model, array $profile)
     {
         $this->model = $model;
-        $this->label = $profile['label'] ?? $model;
+        $this->name = $profile['name'] ?? $model;
         $this->supplier = $profile['supplier'] ?? null;
         $this->protocol = $profile['protocol'] ?? null;
         $this->transport = $profile['transport'] ?? null;
@@ -114,9 +114,9 @@ class DeviceCapabilities
         return $this->model;
     }
 
-    public function getLabel(): string
+    public function getName(): string
     {
-        return $this->label;
+        return $this->name;
     }
 
     public function getSupplier(): ?string
