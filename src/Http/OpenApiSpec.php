@@ -184,8 +184,8 @@ class OpenApiSpec
                 ],
                 '/demo/simulate' => [
                     'post' => [
-                        'summary' => 'Trigger watch simulator',
-                        'description' => 'Demo helper endpoint. Starts the simulator in the background to send a real passive event through WebSocket.',
+                        'summary' => 'Trigger passive watch event simulator',
+                        'description' => 'Demo helper endpoint. Starts the simulator in the background to send one real passive watch -> server event through WebSocket.',
                         'operationId' => 'demoSimulate',
                         'tags' => ['Demo'],
                         'requestBody' => [
@@ -206,6 +206,78 @@ class OpenApiSpec
                                 ],
                             ],
                             '400' => ['$ref' => '#/components/responses/Error'],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                ],
+                '/demo/listener' => [
+                    'post' => [
+                        'summary' => 'Start managed demo watch listener',
+                        'description' => 'Starts a background simulator in listen mode so active server -> watch commands can be tested from the demo.',
+                        'operationId' => 'startDemoListener',
+                        'tags' => ['Demo'],
+                        'requestBody' => [
+                            'required' => true,
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => ['$ref' => '#/components/schemas/DemoListenerRequest'],
+                                ],
+                            ],
+                        ],
+                        'responses' => [
+                            '201' => [
+                                'description' => 'Listener started',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DemoListenerResponse'],
+                                    ],
+                                ],
+                            ],
+                            '200' => [
+                                'description' => 'Listener already running',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DemoListenerResponse'],
+                                    ],
+                                ],
+                            ],
+                            '400' => ['$ref' => '#/components/responses/Error'],
+                            '404' => ['$ref' => '#/components/responses/Error'],
+                        ],
+                    ],
+                ],
+                '/demo/listeners' => [
+                    'get' => [
+                        'summary' => 'List managed demo watch listeners',
+                        'operationId' => 'listDemoListeners',
+                        'tags' => ['Demo'],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'Managed listeners',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DemoListenerListResponse'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                '/demo/listener/{imei}' => [
+                    'delete' => [
+                        'summary' => 'Stop managed demo watch listener',
+                        'operationId' => 'stopDemoListener',
+                        'tags' => ['Demo'],
+                        'parameters' => [$imeiParam],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'Listener stopped',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/DemoListenerResponse'],
+                                    ],
+                                ],
+                            ],
                             '404' => ['$ref' => '#/components/responses/Error'],
                         ],
                     ],
@@ -272,6 +344,7 @@ class OpenApiSpec
                         'properties' => [
                             'device' => ['$ref' => '#/components/schemas/Device'],
                             'features' => ['$ref' => '#/components/schemas/FeatureMap'],
+                            'nativeCommands' => ['$ref' => '#/components/schemas/NativeCommandSet'],
                         ],
                     ],
                     'CommandResponse' => [
@@ -347,6 +420,13 @@ class OpenApiSpec
                             'activeTypes' => ['type' => 'array', 'items' => ['type' => 'string'], 'example' => ['dnHeartRate']],
                         ],
                     ],
+                    'NativeCommandSet' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'passive' => ['type' => 'array', 'items' => ['type' => 'string'], 'example' => ['upHeartRate']],
+                            'active' => ['type' => 'array', 'items' => ['type' => 'string'], 'example' => ['dnHeartRate', 'find']],
+                        ],
+                    ],
                     'CommandRequest' => [
                         'type' => 'object',
                         'required' => ['type'],
@@ -394,6 +474,43 @@ class OpenApiSpec
                                 ],
                             ],
                             'device' => ['$ref' => '#/components/schemas/Device'],
+                        ],
+                    ],
+                    'DemoListenerRequest' => [
+                        'type' => 'object',
+                        'required' => ['imei'],
+                        'properties' => [
+                            'imei' => ['type' => 'string', 'example' => '865028000000306'],
+                        ],
+                    ],
+                    'DemoListenerResponse' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'status' => ['type' => 'string', 'example' => 'started'],
+                            'listener' => ['$ref' => '#/components/schemas/DemoListener'],
+                        ],
+                    ],
+                    'DemoListenerListResponse' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'data' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/DemoListener'],
+                            ],
+                            'meta' => ['$ref' => '#/components/schemas/ListMeta'],
+                        ],
+                    ],
+                    'DemoListener' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'id' => ['type' => 'string', 'example' => 'a1b2c3d4e5f6'],
+                            'imei' => ['type' => 'string', 'example' => '865028000000306'],
+                            'model' => ['type' => 'string', 'example' => 'WONLEX-PRO'],
+                            'pid' => ['type' => 'integer', 'example' => 1234],
+                            'logPath' => ['type' => 'string', 'example' => '/tmp/health-smartwatches-listener-a1b2c3d4e5f6.log'],
+                            'running' => ['type' => 'boolean', 'example' => true],
+                            'online' => ['type' => 'boolean', 'example' => true],
+                            'startedAt' => ['type' => 'integer', 'example' => 1778748533],
                         ],
                     ],
                     'ListMeta' => [

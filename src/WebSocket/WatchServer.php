@@ -297,7 +297,7 @@ class WatchServer implements MessageComponentInterface
     public function onClose(ConnectionInterface $conn): void
     {
         $rid = $conn->resourceId;
-        $imei = $this->sessions[$rid]['imei'] ?? 'desconhecido';
+        $imei = $this->sessions[$rid]['imei'] ?? 'unknown';
         Logger::channel('watch')->info("Disconnected: resourceId=$rid, IMEI=$imei");
 
         if ($imei && isset($this->deviceMap[$imei]) && $this->deviceMap[$imei] === $conn) {
