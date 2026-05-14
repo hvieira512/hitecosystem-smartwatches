@@ -28,9 +28,9 @@ $db = null;
 if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
     try {
         $db = Database::connect($dbConfig);
-        Logger::channel('db')->info("Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
+        Logger::channel('db')->info("Connected to MySQL at {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
     } catch (\PDOException $e) {
-        Logger::channel('db')->warning('sem MySQL (' . $e->getMessage() . '). A usar ficheiros JSON');
+        Logger::channel('db')->warning('MySQL unavailable (' . $e->getMessage() . '). Using JSON files');
     }
 }
 
@@ -57,12 +57,12 @@ $wsServer = new IoServer($wsApp, $wsSocket, $loop);
 
 $apiServer = new ApiServer($watchServer, $loop, $apiPort, $apiHost);
 
-// Nota: a persistencia de eventos Redis Stream -> MySQL e feita pelo worker dedicado
+// Note: Redis Stream -> MySQL event persistence is handled by the dedicated worker
 // (bin/worker.php) usando consumer groups XREADGROUP.
 
-Logger::channel('app')->info("=== Servidor Multi-Vendor Relogios 4G ===");
+Logger::channel('app')->info("=== Multi-Vendor 4G Smartwatch Server ===");
 Logger::channel('app')->info("WebSocket: ws://$wsHost:$wsPort");
 Logger::channel('app')->info("HTTP API:  http://$apiHost:$apiPort");
-Logger::channel('app')->info("Modelos:   " . implode(', ', array_keys($caps)));
+Logger::channel('app')->info("Models:    " . implode(', ', array_keys($caps)));
 
 $loop->run();

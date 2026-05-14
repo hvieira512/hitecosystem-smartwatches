@@ -19,26 +19,26 @@ $consumerName = $workerId;
 $totalProcessed = 0;
 $running = true;
 
-Logger::channel('worker')->info('Iniciando (PID: ' . getmypid() . ')');
+Logger::channel('worker')->info('Starting (PID: ' . getmypid() . ')');
 
 // --- MySQL ---
 if (!$dbConfig || $dbConfig['host'] === '' || $dbConfig['name'] === '') {
-    Logger::channel('worker')->error('configuracao MySQL necessaria');
+    Logger::channel('worker')->error('MySQL configuration is required');
     exit(1);
 }
 try {
     $db = Database::connect($dbConfig);
     $eventsRepo = new EventRepository($db->pdo());
-    Logger::channel('worker')->info("MySQL ligado a {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
+    Logger::channel('worker')->info("Connected to MySQL at {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
 } catch (\PDOException $e) {
-    Logger::channel('worker')->error('MySQL indisponivel (' . $e->getMessage() . '). A encerrar');
+    Logger::channel('worker')->error('MySQL unavailable (' . $e->getMessage() . '). Shutting down');
     exit(1);
 }
 
 // --- Redis ---
 $redisHost = getenv('REDIS_HOST') ?: ($redisConfig['host'] ?? '');
 if ($redisHost === '') {
-    Logger::channel('worker')->error('configuracao Redis necessaria');
+    Logger::channel('worker')->error('Redis configuration is required');
     exit(1);
 }
 $redis = null;
@@ -47,30 +47,30 @@ try {
     if (!$redis->isAvailable()) {
         throw new \RuntimeException("RedisClient not available");
     }
-    Logger::channel('worker')->info("Redis ligado a $redisHost");
+    Logger::channel('worker')->info("Connected to Redis at $redisHost");
 } catch (\Throwable $e) {
-    Logger::channel('worker')->error('Redis indisponivel (' . $e->getMessage() . '). A encerrar');
+    Logger::channel('worker')->error('Redis unavailable (' . $e->getMessage() . '). Shutting down');
     exit(1);
 }
 
 // --- Consumer Group ---
 $redis->xGroupCreate($groupName, $streamKey, '0', true);
-Logger::channel('worker')->info("Grupo '{$groupName}' pronto no stream '{$streamKey}'");
+Logger::channel('worker')->info("Group '{$groupName}' ready on stream '{$streamKey}'");
 
 // --- Signal Handling ---
 if (extension_loaded('pcntl')) {
     pcntl_signal(SIGINT, function () use (&$running) {
-        Logger::channel('worker')->info('SIGINT recebido. A encerrar graciosamente...');
+        Logger::channel('worker')->info('SIGINT received. Shutting down gracefully...');
         $running = false;
     });
     pcntl_signal(SIGTERM, function () use (&$running) {
-        Logger::channel('worker')->info('SIGTERM recebido. A encerrar graciosamente...');
+        Logger::channel('worker')->info('SIGTERM received. Shutting down gracefully...');
         $running = false;
     });
 }
 
 // --- Main Loop ---
-Logger::channel('worker')->info("A consumir eventos de '{$streamKey}' (consumidor: {$consumerName})");
+Logger::channel('worker')->info("Consuming events from '{$streamKey}' (consumer: {$consumerName})");
 
 while ($running) {
     if (extension_loaded('pcntl')) {
@@ -97,10 +97,10 @@ while ($running) {
             $totalProcessed++;
 
             if ($totalProcessed % 100 === 0) {
-                Logger::channel('worker')->info("{$totalProcessed} eventos processados");
+                Logger::channel('worker')->info("{$totalProcessed} events processed");
             }
         } catch (\Throwable $e) {
-            Logger::channel('worker')->error("Erro ao inserir evento {$event['streamId']}: {$e->getMessage()}");
+            Logger::channel('worker')->error("Failed to insert event {$event['streamId']}: {$e->getMessage()}");
             $ackIds[] = $event['streamId'];
         }
     }
@@ -109,7 +109,7 @@ while ($running) {
         try {
             $ackd = $redis->xAck($streamKey, $groupName, $ackIds);
             if ($ackd !== count($ackIds)) {
-                Logger::channel('worker')->warning("acertados {$ackd}/" . count($ackIds) . " eventos");
+                Logger::channel('worker')->warning("Acknowledged {$ackd}/" . count($ackIds) . " events");
             }
         } catch (\Throwable $e) {
             Logger::channel('worker')->error("xAck: {$e->getMessage()}");
@@ -117,4 +117,4 @@ while ($running) {
     }
 }
 
-Logger::channel('worker')->info("Encerrado. Total processado: {$totalProcessed} eventos");
+Logger::channel('worker')->info("Stopped. Total processed: {$totalProcessed} events");

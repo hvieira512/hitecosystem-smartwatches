@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Simulador Multi-Vendor de Relogios 4G
+ * Multi-vendor 4G smartwatch simulator
  *
- * Uso:
+ * Usage:
  *   php simulator/simulate.php --model WONLEX-PRO --imei 865028000000306 --command upHeartRate
  *   php simulator/simulate.php --model VIVISTAR-LITE --imei 865028000000309 --command AP49
  *   php simulator/simulate.php --list-models
@@ -14,15 +14,15 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use App\Registry\DeviceCapabilities;
 
-// --- Parse de argumentos ---
+// --- Argument parsing ---
 
 $args = parseArgs($argv);
 $command = $args['command'] ?? null;
 
-// --- Listar modelos ---
+// --- List models ---
 
 if (isset($args['list-models'])) {
-    echo "Modelos disponiveis:\n";
+    echo "Available models:\n";
     foreach (DeviceCapabilities::allModels() as $model) {
         $name = DeviceCapabilities::modelName($model);
         echo "  - $model ($name)\n";
@@ -30,25 +30,25 @@ if (isset($args['list-models'])) {
     exit(0);
 }
 
-// --- Mostrar capacidades de um modelo ---
+// --- Show model capabilities ---
 
 if (isset($args['capabilities'])) {
     $model = $args['model'] ?? '';
     $caps = DeviceCapabilities::forModel($model);
     if (!$caps) {
-        echo "Erro: Modelo '$model' desconhecido.\n";
+        echo "Error: Unknown model '$model'.\n";
         exit(1);
     }
-    echo "Modelo: $model (" . $caps->getName() . ")\n\n";
-    echo "Comandos PASSIVOS (relogio -> servidor):\n";
+    echo "Model: $model (" . $caps->getName() . ")\n\n";
+    echo "PASSIVE commands (watch -> server):\n";
     foreach ($caps->getPassive() as $c) {
         echo "  - $c\n";
     }
-    echo "\nComandos ACTIVOS (servidor -> relogio):\n";
+    echo "\nACTIVE commands (server -> watch):\n";
     foreach ($caps->getActive() as $c) {
         echo "  - $c\n";
     }
-    echo "\nFEATURES NORMALIZADAS:\n";
+    echo "\nNORMALIZED FEATURES:\n";
     foreach ($caps->getFeatures() as $feature => $commands) {
         $passive = implode(', ', $commands['passive'] ?? []);
         $active = implode(', ', $commands['active'] ?? []);
@@ -59,34 +59,34 @@ if (isset($args['capabilities'])) {
     exit(0);
 }
 
-// --- Variaveis obrigatorias ---
+// --- Required variables ---
 
 $model = $args['model'] ?? '';
 $imei = $args['imei'] ?? '';
 
 if (!$model || !$imei) {
-    echo "Uso:\n";
-    echo "  php simulator/simulate.php --model MODELO --imei IMEI [opcoes]\n\n";
-    echo "Opcoes:\n";
-    echo "  --command TYPE        Envia comando unico (ex: upHeartRate)\n";
-    echo "  --data JSON           Dados do comando (ex: '{\"value\":75}')\n";
-    echo "  --interactive         Modo interactivo (consola)\n";
-    echo "  --listen              Manter ligacao e ouvir comandos\n";
-    echo "  --server URL          URL do servidor WebSocket (def: ws://127.0.0.1:8080)\n";
-    echo "  --list-models         Listar modelos disponiveis\n";
-    echo "  --capabilities        Mostrar capacidades de um modelo\n";
+    echo "Usage:\n";
+    echo "  php simulator/simulate.php --model MODEL --imei IMEI [options]\n\n";
+    echo "Options:\n";
+    echo "  --command TYPE        Send a single command (ex: upHeartRate)\n";
+    echo "  --data JSON           Command data (ex: '{\"value\":75}')\n";
+    echo "  --interactive         Interactive mode (console)\n";
+    echo "  --listen              Keep the connection open and listen for commands\n";
+    echo "  --server URL          WebSocket server URL (default: ws://127.0.0.1:8080)\n";
+    echo "  --list-models         List available models\n";
+    echo "  --capabilities        Show capabilities for a model\n";
     exit(1);
 }
 
-// --- Carregar capacidades ---
+// --- Load capabilities ---
 
 $caps = DeviceCapabilities::forModel($model);
 if (!$caps) {
-    echo "Erro: Modelo '$model' desconhecido.\n";
+    echo "Error: Unknown model '$model'.\n";
     exit(1);
 }
 
-// --- Carregar perfil de simulacao ---
+// --- Load simulation profile ---
 
 $profileFile = __DIR__ . "/profiles/" . strtolower(str_replace('_', '-', $model)) . ".json";
 $profile = [];
@@ -120,7 +120,7 @@ class WsClient
 
         $this->socket = @fsockopen($host, $port, $errno, $errstr, 5);
         if (!$this->socket) {
-            throw new RuntimeException("Falha ao conectar: $errstr ($errno)");
+            throw new RuntimeException("Failed to connect: $errstr ($errno)");
         }
 
         $key = base64_encode(random_bytes(16));
@@ -144,7 +144,7 @@ class WsClient
 
         if (!str_contains($response, '101 Switching Protocols')) {
             fclose($this->socket);
-            throw new RuntimeException("Handshake falhou. Resposta:\n$response");
+            throw new RuntimeException("Handshake failed. Response:\n$response");
         }
 
         $this->connected = true;
@@ -172,7 +172,7 @@ class WsClient
             return null;
         }
 
-        // Ler cabeçalho do frame (2 bytes minimo)
+        // Read frame header (2 bytes minimum).
         $header = fread($this->socket, 2);
         if ($header === false || strlen($header) < 2) {
             return null;
@@ -189,7 +189,7 @@ class WsClient
         }
 
         if ($opcode === 9) {
-            // ping - responder pong
+            // ping - reply pong
             $this->sendPong();
             return $this->receive($timeout);
         }
@@ -227,7 +227,7 @@ class WsClient
         $len = strlen($data);
         $maskKey = random_bytes(4);
 
-        // Mascarar dados (RFC 6455: cliente -> servidor tem de ser masked)
+        // Mask data (RFC 6455: client -> server must be masked).
         $masked = '';
         for ($i = 0; $i < $len; $i++) {
             $masked .= chr(ord($data[$i]) ^ ord($maskKey[$i % 4]));
@@ -269,7 +269,7 @@ class WsClient
     }
 }
 
-// --- Funcoes auxiliares ---
+// --- Helper functions ---
 
 function sendPacket(WsClient $ws, array $data): void
 {
@@ -305,16 +305,16 @@ function withToken(array $data, string $sessionToken): array
     return $data;
 }
 
-// --- Conectar ---
+// --- Connect ---
 
-echo "=== Simulador: $model ($imei) ===\n";
-echo "Servidor: $serverUrl\n";
+echo "=== Simulator: $model ($imei) ===\n";
+echo "Server: $serverUrl\n";
 
 try {
     $ws = new WsClient($serverUrl);
-    echo "[OK] Conectado ao servidor WebSocket.\n";
+    echo "[OK] Connected to WebSocket server.\n";
 } catch (Exception $e) {
-    echo "[ERRO] " . $e->getMessage() . "\n";
+    echo "[ERROR] " . $e->getMessage() . "\n";
     exit(1);
 }
 
@@ -338,53 +338,53 @@ sendPacket($ws, [
     'timestamp' => now(),
 ]);
 
-echo "[login] Aguardar resposta...\n";
+echo "[login] Waiting for response...\n";
 $response = receivePacket($ws, 5);
 
 if (!$response) {
-    echo "[ERRO] Sem resposta do servidor.\n";
+    echo "[ERROR] No response from server.\n";
     exit(1);
 }
 
 if ($response['type'] === 'login_error') {
-    echo "[ERRO] Login rejeitado: " . ($response['data']['error'] ?? 'motivo desconhecido') . "\n";
+    echo "[ERROR] Login rejected: " . ($response['data']['error'] ?? 'unknown reason') . "\n";
     exit(1);
 }
 
 if ($response['type'] === 'login_ok') {
     $sessionToken = $response['data']['sessionToken'] ?? '';
     $capsFromServer = $response['data']['capabilities'] ?? [];
-    echo "[OK] Login aceite. Sesao: $sessionToken\n";
-    echo "     Capacidades recebidas do servidor:\n";
-    echo "       Passive: " . count($capsFromServer['passive'] ?? []) . " comandos\n";
-    echo "       Active:  " . count($capsFromServer['active'] ?? []) . " comandos\n";
+    echo "[OK] Login accepted. Session: $sessionToken\n";
+    echo "     Capabilities received from server:\n";
+    echo "       Passive: " . count($capsFromServer['passive'] ?? []) . " commands\n";
+    echo "       Active:  " . count($capsFromServer['active'] ?? []) . " commands\n";
 } else {
-    echo "[?] Resposta inesperada: " . json_encode($response) . "\n";
+    echo "[?] Unexpected response: " . json_encode($response) . "\n";
     exit(1);
 }
 
-// --- Modo interactivo ---
+// --- Interactive mode ---
 
 $templates = $profile['dataTemplates'] ?? [];
 
 if ($interactive) {
-    echo "\n=== Modo Interactivo ===\n";
-    echo "Comandos passiveis disponiveis:\n";
+    echo "\n=== Interactive Mode ===\n";
+    echo "Available passive commands:\n";
     foreach ($caps->getPassive() as $c) {
         echo "  $c\n";
     }
-    echo "\nDigite 'quit' para sair.\n\n";
+    echo "\nType 'quit' to exit.\n\n";
 
     stream_set_blocking(STDIN, false);
 
     while (true) {
-        // Verificar mensagens do servidor (non-blocking)
+        // Check server messages (non-blocking).
         $serverMsg = receivePacket($ws, 0);
         if ($serverMsg) {
             $type = $serverMsg['type'] ?? '?';
             $ref = $serverMsg['ref'] ?? '?';
             if ($ref === 's:down') {
-                echo "\n[COMANDO] {$serverMsg['type']}: " . json_encode($serverMsg['data'] ?? []) . "\n";
+                echo "\n[COMMAND] {$serverMsg['type']}: " . json_encode($serverMsg['data'] ?? []) . "\n";
                 sendPacket($ws, [
                     'type' => $type,
                     'ident' => $serverMsg['ident'] ?? '',
@@ -393,13 +393,13 @@ if ($interactive) {
                     'data' => withToken(['status' => 'ok'], $sessionToken),
                     'timestamp' => now(),
                 ]);
-                echo "[reply] Resposta enviada.\n> ";
+                echo "[reply] Response sent.\n> ";
             } elseif ($ref === 's:reply') {
                 echo "\n[ACK] {$serverMsg['type']} (ident={$serverMsg['ident']})\n> ";
             }
         }
 
-        // Ler input
+        // Read input.
         $input = trim(fgets(STDIN));
         if (!$input) {
             usleep(100000);
@@ -415,12 +415,12 @@ if ($interactive) {
         $cmdData = isset($parts[1]) ? json_decode($parts[1], true) : ($templates[$cmdType] ?? []);
 
         if (!$caps->supportsPassive($cmdType)) {
-            echo "[!] Comando '$cmdType' nao e passivo para este modelo.\n";
+            echo "[!] Command '$cmdType' is not passive for this model.\n";
             continue;
         }
 
         if ($cmdData === null) {
-            echo "[!] JSON invalido.\n";
+            echo "[!] Invalid JSON.\n";
             continue;
         }
 
@@ -434,42 +434,42 @@ if ($interactive) {
             'timestamp' => now(),
         ]);
 
-        // Aguardar confirmacao
+        // Wait for confirmation.
         $ack = null;
         $start = time();
         while (!$ack && (time() - $start) < 5) {
             $ack = receivePacket($ws, 1);
             if ($ack) {
                 if (($ack['ident'] ?? '') === $cmdIdent) {
-                    echo "[OK] Confirmado (ident=$cmdIdent)\n";
+                    echo "[OK] Confirmed (ident=$cmdIdent)\n";
                 } elseif (($ack['type'] ?? '') === 'error') {
-                    echo "[ERRO] {$ack['data']['message']}\n";
+                    echo "[ERROR] {$ack['data']['message']}\n";
                 }
             }
         }
         if (!$ack) {
-            echo "[!] Sem confirmacao (timeout)\n";
+            echo "[!] No confirmation (timeout)\n";
         }
     }
 
     $ws->close();
-    echo "\nSimulador encerrado.\n";
+    echo "\nSimulator stopped.\n";
     exit(0);
 }
 
-// --- Modo comando unico ---
+// --- Single command mode ---
 
 if ($command) {
     if (!$caps->supportsPassive($command)) {
-        echo "Erro: Comando '$command' nao e passivo para o modelo '$model'.\n";
-        echo "Comandos passiveis: " . implode(', ', $caps->getPassive()) . "\n";
+        echo "Error: Command '$command' is not passive for model '$model'.\n";
+        echo "Passive commands: " . implode(', ', $caps->getPassive()) . "\n";
         $ws->close();
         exit(1);
     }
 
     $cmdData = $dataJson ? json_decode($dataJson, true) : ($templates[$command] ?? []);
     if ($cmdData === null) {
-        echo "Erro: JSON invalido.\n";
+        echo "Error: Invalid JSON.\n";
         $ws->close();
         exit(1);
     }
@@ -484,44 +484,44 @@ if ($command) {
         'timestamp' => now(),
     ]);
 
-    echo "[$command] Enviado (ident=$cmdIdent). Aguardar confirmacao...\n";
+    echo "[$command] Sent (ident=$cmdIdent). Waiting for confirmation...\n";
 
     $ack = null;
     for ($i = 0; $i < 50; $i++) {
         $ack = receivePacket($ws, 1);
         if ($ack) {
             if (($ack['ident'] ?? '') === $cmdIdent) {
-                echo "[OK] Confirmado pelo servidor.\n";
+                echo "[OK] Confirmed by server.\n";
                 break;
             }
             if (($ack['type'] ?? '') === 'error') {
-                echo "[ERRO] {$ack['data']['message']}\n";
+                echo "[ERROR] {$ack['data']['message']}\n";
                 break;
             }
         }
     }
 
     if (!$ack) {
-        echo "[!] Timeout: sem resposta do servidor.\n";
+        echo "[!] Timeout: no response from server.\n";
     }
 
     $ws->close();
     exit(0);
 }
 
-// --- Modo listen ---
+// --- Listen mode ---
 
 if ($listen) {
-    echo "\n=== Modo Listen ===\n";
-    echo "A aguardar comandos do servidor... (Ctrl+C para sair)\n\n";
+    echo "\n=== Listen Mode ===\n";
+    echo "Waiting for server commands... (Ctrl+C to exit)\n\n";
 
     while (true) {
         $msg = receivePacket($ws, 5);
         if ($msg) {
             $ref = $msg['ref'] ?? '';
             if ($ref === 's:down') {
-                echo "[COMANDO] {$msg['type']}\n";
-                echo "  Dados: " . json_encode($msg['data'] ?? []) . "\n";
+                echo "[COMMAND] {$msg['type']}\n";
+                echo "  Data: " . json_encode($msg['data'] ?? []) . "\n";
 
                 sendPacket($ws, [
                     'type' => $msg['type'],
@@ -531,7 +531,7 @@ if ($listen) {
                     'data' => withToken(['status' => 'ok', 'received' => true], $sessionToken),
                     'timestamp' => now(),
                 ]);
-                echo "[reply] Resposta enviada.\n";
+                echo "[reply] Response sent.\n";
             } elseif ($ref === 's:reply') {
                 echo "[ACK] {$msg['type']}\n";
             }
@@ -541,7 +541,7 @@ if ($listen) {
     }
 }
 
-// --- Funcao auxiliar ---
+// --- Helper function ---
 
 function parseArgs(array $argv): array
 {

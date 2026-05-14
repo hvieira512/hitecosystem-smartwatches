@@ -25,9 +25,9 @@ $db = null;
 if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
     try {
         $db = Database::connect($dbConfig);
-        Logger::channel('db')->info("Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
+        Logger::channel('db')->info("Connected to MySQL at {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
     } catch (\PDOException $e) {
-        Logger::channel('db')->warning('sem MySQL (' . $e->getMessage() . '). A usar ficheiros JSON');
+        Logger::channel('db')->warning('MySQL unavailable (' . $e->getMessage() . '). Using JSON files');
     }
 }
 
@@ -53,11 +53,11 @@ $wsSocket = new Reactor("$wsHost:$wsPort", $loop);
 $wsServer = new IoServer($wsApp, $wsSocket, $loop);
 
 // --- Redis Command Stream Consumer ---
-// Recebe comandos do processo API via Redis Stream e envia para os dispositivos
+// Receives commands from the API process via Redis Stream and sends them to devices.
 
 if ($redis !== null && $redis->isAvailable()) {
     $redis->xGroupCreate('cmd:worker', 'cmd:stream', '0', true);
-    Logger::channel('ws-cmd')->info("Grupo 'cmd:worker' pronto no stream 'cmd:stream'");
+    Logger::channel('ws-cmd')->info("Group 'cmd:worker' ready on stream 'cmd:stream'");
 
     $loop->addPeriodicTimer(0.5, function () use ($redis, $watchServer) {
         try {
@@ -76,7 +76,7 @@ if ($redis !== null && $redis->isAvailable()) {
                     $sent = $watchServer->sendCommand($imei, $type, $data);
                 }
 
-                Logger::channel('ws-cmd')->info("IMEI=$imei type=$type " . ($sent ? 'enviado' : 'falhou'));
+                Logger::channel('ws-cmd')->info("IMEI=$imei type=$type " . ($sent ? 'sent' : 'failed'));
                 $ackIds[] = $cmd['streamId'];
             }
 
@@ -84,13 +84,13 @@ if ($redis !== null && $redis->isAvailable()) {
                 $redis->xAck('cmd:stream', 'cmd:worker', $ackIds);
             }
         } catch (\Throwable $e) {
-            Logger::channel('ws-cmd')->error("Erro: {$e->getMessage()}");
+            Logger::channel('ws-cmd')->error("Error: {$e->getMessage()}");
         }
     });
-    Logger::channel('ws-cmd')->info('Ativo: Redis Stream -> WebSocket commands');
+    Logger::channel('ws-cmd')->info('Active: Redis Stream -> WebSocket commands');
 }
 
-Logger::channel('app')->info("=== WebSocket Server (separado) ===");
+Logger::channel('app')->info("=== WebSocket Server (separate) ===");
 Logger::channel('app')->info("ws://$wsHost:$wsPort");
 
 $loop->run();

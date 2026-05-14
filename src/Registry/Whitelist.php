@@ -46,7 +46,7 @@ class Whitelist
         if (empty($this->devices) && file_exists($this->filePath)) {
             $count = $this->migrator->seedFromWhitelistJson($this->filePath);
             if ($count > 0) {
-                Logger::channel('whitelist')->info("Migrados $count dispositivos de $this->filePath para MySQL");
+                Logger::channel('whitelist')->info("Migrated $count devices from $this->filePath to MySQL");
                 $this->loadFromDatabase();
             }
         }

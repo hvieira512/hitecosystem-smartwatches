@@ -10,29 +10,29 @@ class OpenApiSpec
             'name' => 'imei',
             'in' => 'path',
             'required' => true,
-            'description' => 'IMEI do dispositivo (15 digitos)',
+            'description' => 'Device IMEI (15 digits)',
             'schema' => ['type' => 'string', 'example' => '865028000000306'],
         ];
 
         return [
             'openapi' => '3.1.0',
             'info' => [
-                'title' => 'API Multi-Vendor Relogios 4G',
+                'title' => 'Multi-Vendor 4G Smartwatch API',
                 'version' => '1.1.0',
-                'description' => 'API REST para consultar dispositivos, eventos recebidos e comandos server -> watch. As respostas usam recursos consistentes: `device`, `event`, `command` e `error`.',
+                'description' => 'REST API for querying devices, received events, and server -> watch commands. Responses use consistent `device`, `event`, `command`, and `error` resources.',
             ],
             'servers' => [
-                ['url' => 'http://localhost:8081', 'description' => 'Desenvolvimento local'],
+                ['url' => 'http://localhost:8081', 'description' => 'Local development'],
             ],
             'paths' => [
                 '/devices' => [
                     'get' => [
-                        'summary' => 'Listar dispositivos',
+                        'summary' => 'List devices',
                         'operationId' => 'listDevices',
-                        'tags' => ['Dispositivos'],
+                        'tags' => ['Devices'],
                         'responses' => [
                             '200' => [
-                                'description' => 'Lista de dispositivos registados',
+                                'description' => 'List of registered devices',
                                 'content' => [
                                     'application/json' => [
                                         'schema' => ['$ref' => '#/components/schemas/DeviceListResponse'],
@@ -44,28 +44,28 @@ class OpenApiSpec
                 ],
                 '/events/recent' => [
                     'get' => [
-                        'summary' => 'Listar eventos recentes',
+                        'summary' => 'List recent events',
                         'operationId' => 'recentEvents',
-                        'tags' => ['Eventos'],
+                        'tags' => ['Events'],
                         'parameters' => [
                             [
                                 'name' => 'limit',
                                 'in' => 'query',
                                 'required' => false,
-                                'description' => 'Numero maximo de eventos recentes',
+                                'description' => 'Maximum number of recent events',
                                 'schema' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200, 'default' => 50],
                             ],
                             [
                                 'name' => 'after',
                                 'in' => 'query',
                                 'required' => false,
-                                'description' => 'Devolve apenas eventos com id superior a este valor',
+                                'description' => 'Return only events with an id greater than this value',
                                 'schema' => ['type' => 'integer', 'example' => 12],
                             ],
                         ],
                         'responses' => [
                             '200' => [
-                                'description' => 'Historico recente de eventos passivos',
+                                'description' => 'Recent passive event history',
                                 'content' => [
                                     'application/json' => [
                                         'schema' => ['$ref' => '#/components/schemas/EventListResponse'],
@@ -77,13 +77,13 @@ class OpenApiSpec
                 ],
                 '/devices/{imei}/events/latest' => [
                     'get' => [
-                        'summary' => 'Obter ultimo evento recebido',
+                        'summary' => 'Get the latest received event',
                         'operationId' => 'latestDeviceEvent',
-                        'tags' => ['Eventos'],
+                        'tags' => ['Events'],
                         'parameters' => [$imeiParam],
                         'responses' => [
                             '200' => [
-                                'description' => 'Ultimo evento recebido do dispositivo',
+                                'description' => 'Latest event received from the device',
                                 'content' => [
                                     'application/json' => [
                                         'schema' => ['$ref' => '#/components/schemas/DeviceEventResponse'],
@@ -96,13 +96,13 @@ class OpenApiSpec
                 ],
                 '/devices/{imei}/features' => [
                     'get' => [
-                        'summary' => 'Listar features normalizadas',
+                        'summary' => 'List normalized features',
                         'operationId' => 'deviceFeatures',
                         'tags' => ['Features'],
                         'parameters' => [$imeiParam],
                         'responses' => [
                             '200' => [
-                                'description' => 'Features canonicas e comandos nativos que as implementam',
+                                'description' => 'Canonical features and the native commands that implement them',
                                 'content' => [
                                     'application/json' => [
                                         'schema' => ['$ref' => '#/components/schemas/DeviceFeaturesResponse'],
@@ -115,10 +115,10 @@ class OpenApiSpec
                 ],
                 '/devices/{imei}/command' => [
                     'post' => [
-                        'summary' => 'Enviar comando nativo',
-                        'description' => 'Envia um comando activo nativo do fornecedor. Para uma API mais portavel, prefira enviar por feature.',
+                        'summary' => 'Send native command',
+                        'description' => 'Sends a vendor-native active command. For a more portable API, prefer sending commands by feature.',
                         'operationId' => 'sendCommand',
-                        'tags' => ['Comandos'],
+                        'tags' => ['Commands'],
                         'parameters' => [$imeiParam],
                         'requestBody' => [
                             'required' => true,
@@ -130,7 +130,7 @@ class OpenApiSpec
                         ],
                         'responses' => [
                             '200' => [
-                                'description' => 'Comando enviado',
+                                'description' => 'Command sent',
                                 'content' => [
                                     'application/json' => [
                                         'schema' => ['$ref' => '#/components/schemas/CommandResponse'],
@@ -145,8 +145,8 @@ class OpenApiSpec
                 ],
                 '/devices/{imei}/features/{feature}/command' => [
                     'post' => [
-                        'summary' => 'Enviar comando por feature',
-                        'description' => 'Traduz uma feature canonica para o comando activo nativo do modelo. Exemplo: `heart_rate` vira `dnHeartRate` em Wonlex e `BPXL` em VIVISTAR.',
+                        'summary' => 'Send command by feature',
+                        'description' => 'Translates a canonical feature to the model native active command. Example: `heart_rate` becomes `dnHeartRate` on Wonlex and `BPXL` on VIVISTAR.',
                         'operationId' => 'sendFeatureCommand',
                         'tags' => ['Features'],
                         'parameters' => [
@@ -155,7 +155,7 @@ class OpenApiSpec
                                 'name' => 'feature',
                                 'in' => 'path',
                                 'required' => true,
-                                'description' => 'Feature canonica a executar',
+                                'description' => 'Canonical feature to execute',
                                 'schema' => ['type' => 'string', 'example' => 'heart_rate'],
                             ],
                         ],
@@ -169,7 +169,7 @@ class OpenApiSpec
                         ],
                         'responses' => [
                             '200' => [
-                                'description' => 'Feature traduzida e comando enviado',
+                                'description' => 'Feature translated and command sent',
                                 'content' => [
                                     'application/json' => [
                                         'schema' => ['$ref' => '#/components/schemas/CommandResponse'],
@@ -184,8 +184,8 @@ class OpenApiSpec
                 ],
                 '/demo/simulate' => [
                     'post' => [
-                        'summary' => 'Disparar simulador de relogio',
-                        'description' => 'Endpoint auxiliar de demonstracao. Arranca o simulador em background para enviar um evento passivo real pelo WebSocket.',
+                        'summary' => 'Trigger watch simulator',
+                        'description' => 'Demo helper endpoint. Starts the simulator in the background to send a real passive event through WebSocket.',
                         'operationId' => 'demoSimulate',
                         'tags' => ['Demo'],
                         'requestBody' => [
@@ -198,7 +198,7 @@ class OpenApiSpec
                         ],
                         'responses' => [
                             '202' => [
-                                'description' => 'Simulacao colocada em fila',
+                                'description' => 'Simulation queued',
                                 'content' => [
                                     'application/json' => [
                                         'schema' => ['$ref' => '#/components/schemas/SimulationResponse'],
@@ -214,7 +214,7 @@ class OpenApiSpec
             'components' => [
                 'responses' => [
                     'Error' => [
-                        'description' => 'Erro normalizado',
+                        'description' => 'Normalized error',
                         'content' => [
                             'application/json' => [
                                 'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
@@ -324,12 +324,12 @@ class OpenApiSpec
                             'receivedAt' => ['type' => 'integer', 'example' => 1778673778493],
                             'nativePayload' => [
                                 'type' => 'object',
-                                'description' => 'Payload limpo no formato nativo do fornecedor. Tokens de sessao nao sao expostos.',
+                                'description' => 'Sanitized payload in the vendor native format. Session tokens are not exposed.',
                                 'example' => ['date' => '72', 'testType' => 0],
                             ],
                             'normalized' => [
                                 'type' => 'object',
-                                'description' => 'Campos canonicos extraidos quando a feature e conhecida.',
+                                'description' => 'Canonical fields extracted when the feature is known.',
                                 'example' => ['heartRateBpm' => 72],
                             ],
                         ],
@@ -413,7 +413,7 @@ class OpenApiSpec
                         'type' => 'object',
                         'properties' => [
                             'code' => ['type' => 'string', 'example' => 'device_offline'],
-                            'message' => ['type' => 'string', 'example' => 'Dispositivo offline ou nao encaminhavel neste momento'],
+                            'message' => ['type' => 'string', 'example' => 'Device is offline or cannot be routed right now'],
                             'details' => ['type' => 'object', 'nullable' => true],
                         ],
                     ],

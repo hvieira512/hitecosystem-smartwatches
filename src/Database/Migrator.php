@@ -17,7 +17,7 @@ class Migrator
     {
         $path = __DIR__ . '/../../config/schema.sql';
         if (!file_exists($path)) {
-            Logger::channel('db')->error("schema.sql nao encontrado em $path");
+            Logger::channel('db')->error("schema.sql not found at $path");
             return;
         }
 
@@ -38,7 +38,7 @@ class Migrator
         $this->dropColumnIfExists('devices', 'label');
         $this->dropColumnIfExists('device_events', 'model');
 
-        Logger::channel('db')->info('Migracao concluida');
+        Logger::channel('db')->info('Migration completed');
     }
 
     private function dropColumnIfExists(string $table, string $column): void
@@ -58,7 +58,7 @@ class Migrator
 
         try {
             $this->pdo->exec("ALTER TABLE `$table` DROP COLUMN `$column`");
-            Logger::channel('db')->info("Coluna removida: $table.$column");
+            Logger::channel('db')->info("Removed column: $table.$column");
         } catch (\PDOException $e) {
             if ((string)$e->getCode() !== '42000' || !str_contains($e->getMessage(), "Can't DROP")) {
                 throw $e;

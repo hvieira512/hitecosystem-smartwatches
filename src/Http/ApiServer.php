@@ -56,14 +56,14 @@ class ApiServer
         $this->socket = new SocketServer("$host:$port", [], $loop);
         $this->http->listen($this->socket);
 
-        Logger::channel('api')->info("HTTP API em http://$host:$port");
+        Logger::channel('api')->info("HTTP API at http://$host:$port");
         Logger::channel('api')->info("WS server URL: {$this->wsServerUrl}");
         if ($watchServer === null) {
-            Logger::channel('api')->info("Modo separado: comandos enviados via Redis Stream");
+            Logger::channel('api')->info("Separate mode: commands are sent via Redis Stream");
         }
     }
 
-    // --- WatchServer wrappers (fallback quando WatchServer nao esta disponivel) ---
+    // --- WatchServer wrappers (fallback when WatchServer is unavailable) ---
 
     private function whitelist(): Whitelist
     {
@@ -145,7 +145,7 @@ class ApiServer
                 'feature' => '',
                 'source' => 'api',
             ]);
-            Logger::channel('api')->info("Comando publicado via Redis: IMEI=$imei type=$type requestId=$requestId");
+            Logger::channel('api')->info("Command published via Redis: IMEI=$imei type=$type requestId=$requestId");
             return true;
         }
         return false;
@@ -208,7 +208,7 @@ class ApiServer
                 $method === 'POST' && $path === '/demo/simulate' => $this->simulateDeviceEvent($request),
                 $method === 'GET' && $path === '/openapi.json' => $this->openApiSpec(),
                 $method === 'GET' && $path === '/docs' => $this->swaggerUi(),
-                default => $this->errorResponse('not_found', 'Endpoint nao encontrado', 404),
+                default => $this->errorResponse('not_found', 'Endpoint not found', 404),
             };
         } catch (\Throwable $e) {
             return $this->errorResponse('internal_error', $e->getMessage(), 500);
@@ -262,7 +262,7 @@ class ApiServer
         if (!$whitelist->isAuthorized($imei)) {
             return $this->errorResponse(
                 'device_not_found',
-                'Dispositivo nao encontrado ou desativado',
+                'Device not found or disabled',
                 404
             );
         }
@@ -272,7 +272,7 @@ class ApiServer
         if (!$data && !$this->deviceIsOnline($imei)) {
             return $this->errorResponse(
                 'no_data',
-                'Nenhum evento disponivel para este dispositivo',
+                'No event available for this device',
                 404
             );
         }
@@ -289,7 +289,7 @@ class ApiServer
         if (!$whitelist->isAuthorized($imei)) {
             return $this->errorResponse(
                 'device_not_found',
-                'Dispositivo nao encontrado ou desativado',
+                'Device not found or disabled',
                 404
             );
         }
@@ -298,7 +298,7 @@ class ApiServer
         if (!$body || !isset($body['type'])) {
             return $this->errorResponse(
                 'invalid_request',
-                'Campo "type" obrigatorio no JSON',
+                'The "type" field is required in the JSON body',
                 400
             );
         }
@@ -309,7 +309,7 @@ class ApiServer
         if (!$this->deviceSupportsActiveCommand($imei, $type)) {
             return $this->errorResponse(
                 'command_not_supported',
-                "Dispositivo nao suporta o comando $type",
+                "Device does not support command $type",
                 400
             );
         }
@@ -317,7 +317,7 @@ class ApiServer
         if (!$this->deviceIsOnline($imei)) {
             return $this->errorResponse(
                 'device_offline',
-                'Dispositivo offline ou nao encaminhavel neste momento',
+                'Device is offline or cannot be routed right now',
                 409
             );
         }
@@ -326,7 +326,7 @@ class ApiServer
         if (!$sent) {
             return $this->errorResponse(
                 'device_offline',
-                'Dispositivo offline ou nao encaminhavel neste momento',
+                'Device is offline or cannot be routed right now',
                 409
             );
         }
@@ -348,7 +348,7 @@ class ApiServer
         if (!$whitelist->isAuthorized($imei)) {
             return $this->errorResponse(
                 'device_not_found',
-                'Dispositivo nao encontrado ou desativado',
+                'Device not found or disabled',
                 404
             );
         }
@@ -358,7 +358,7 @@ class ApiServer
         if (!$caps) {
             return $this->errorResponse(
                 'model_not_found',
-                'Modelo do dispositivo nao encontrado',
+                'Device model not found',
                 404
             );
         }
@@ -375,7 +375,7 @@ class ApiServer
         if (!$whitelist->isAuthorized($imei)) {
             return $this->errorResponse(
                 'device_not_found',
-                'Dispositivo nao encontrado ou desativado',
+                'Device not found or disabled',
                 404
             );
         }
@@ -385,7 +385,7 @@ class ApiServer
         if (!$caps || !$caps->supportsFeature($feature)) {
             return $this->errorResponse(
                 'feature_not_supported',
-                "Modelo $model nao suporta a feature $feature",
+                "Model $model does not support feature $feature",
                 400
             );
         }
@@ -394,7 +394,7 @@ class ApiServer
         if (!$type) {
             return $this->errorResponse(
                 'feature_has_no_active_command',
-                "Feature $feature nao tem comando activo para o modelo $model",
+                "Feature $feature has no active command for model $model",
                 400
             );
         }
@@ -405,7 +405,7 @@ class ApiServer
         if (!$this->deviceIsOnline($imei)) {
             return $this->errorResponse(
                 'device_offline',
-                'Dispositivo offline ou nao encaminhavel neste momento',
+                'Device is offline or cannot be routed right now',
                 409
             );
         }
@@ -414,7 +414,7 @@ class ApiServer
         if (!$sentType) {
             return $this->errorResponse(
                 'device_offline',
-                'Dispositivo offline ou nao encaminhavel neste momento',
+                'Device is offline or cannot be routed right now',
                 409
             );
         }
@@ -440,7 +440,7 @@ class ApiServer
         if ($imei === '' || $type === '') {
             return $this->errorResponse(
                 'invalid_request',
-                'Campos "imei" e "type" sao obrigatorios',
+                'Fields "imei" and "type" are required',
                 400
             );
         }
@@ -453,7 +453,7 @@ class ApiServer
         if (!$caps) {
             return $this->errorResponse(
                 'model_not_found',
-                "Modelo $model nao encontrado",
+                "Model $model not found",
                 404
             );
         }
@@ -461,7 +461,7 @@ class ApiServer
         if (!$caps->supportsPassive($type)) {
             return $this->errorResponse(
                 'capability_not_supported',
-                "Modelo $model nao suporta o evento passivo $type",
+                "Model $model does not support passive event $type",
                 400,
                 [
                     'supportedPassiveTypes' => $caps->getPassive(),
@@ -1085,7 +1085,7 @@ class ApiServer
     <header>
         <div>
             <h1>Smartwatches 4G Demo</h1>
-            <div class="muted">API HTTP, simulador WebSocket e eventos passivos recebidos pelo servidor</div>
+            <div class="muted">HTTP API, WebSocket simulator, and passive events received by the server</div>
         </div>
         <div class="statusbar"><span class="dot"></span><span id="connectionText">live polling</span></div>
     </header>
@@ -1093,8 +1093,8 @@ class ApiServer
     <main>
         <section>
             <div class="section-head">
-                <h2>Relogios</h2>
-                <button class="action" id="refreshDevices" type="button">Atualizar</button>
+                <h2>Watches</h2>
+                <button class="action" id="refreshDevices" type="button">Refresh</button>
             </div>
             <div class="content">
                 <div id="devices" class="device-list"></div>
@@ -1103,17 +1103,17 @@ class ApiServer
 
         <section>
             <div class="section-head">
-                <h2>Simulacao</h2>
-                <span class="badge" id="selectedBadge">sem selecao</span>
+                <h2>Simulation</h2>
+                <span class="badge" id="selectedBadge">no selection</span>
             </div>
             <div class="content split">
                 <div class="button-grid" id="quickActions"></div>
                 <div>
-                    <div class="muted">Features normalizadas</div>
+                    <div class="muted">Normalized features</div>
                     <div class="feature-row" id="features"></div>
                 </div>
                 <div>
-                    <div class="muted">Ultima resposta HTTP</div>
+                    <div class="muted">Latest HTTP response</div>
                     <pre id="lastResponse">{}</pre>
                 </div>
             </div>
@@ -1121,7 +1121,7 @@ class ApiServer
 
         <section>
             <div class="section-head">
-                <h2>Eventos recebidos</h2>
+                <h2>Received events</h2>
                 <span class="badge" id="eventCount">0</span>
             </div>
             <div class="content">
@@ -1142,15 +1142,15 @@ class ApiServer
         };
 
         const quickFeatures = [
-            ['heart_rate', 'Ritmo cardiaco'],
-            ['blood_pressure', 'Pressao arterial'],
-            ['blood_oxygen', 'Oxigenio'],
-            ['temperature', 'Temperatura'],
-            ['location', 'Localizacao'],
+            ['heart_rate', 'Heart rate'],
+            ['blood_pressure', 'Blood pressure'],
+            ['blood_oxygen', 'Oxygen'],
+            ['temperature', 'Temperature'],
+            ['location', 'Location'],
             ['heartbeat', 'Heartbeat'],
-            ['activity', 'Atividade'],
-            ['battery', 'Bateria'],
-            ['sleep', 'Sono'],
+            ['activity', 'Activity'],
+            ['battery', 'Battery'],
+            ['sleep', 'Sleep'],
             ['ecg', 'ECG'],
         ];
 
@@ -1228,7 +1228,7 @@ class ApiServer
                 renderEvents();
                 $('connectionText').textContent = `live polling - ${new Date().toLocaleTimeString()}`;
             } catch (error) {
-                $('connectionText').innerHTML = '<span class="error">sem ligacao</span>';
+                $('connectionText').innerHTML = '<span class="error">disconnected</span>';
             }
         }
 
@@ -1262,7 +1262,7 @@ class ApiServer
 
         function renderActions() {
             const device = selectedDevice();
-            $('selectedBadge').textContent = device ? device.model.id : 'sem selecao';
+            $('selectedBadge').textContent = device ? device.model.id : 'no selection';
 
             $('features').innerHTML = Object.keys(state.features).map((feature) => (
                 `<span class="feature-chip">${escapeHtml(feature)}</span>`
@@ -1287,7 +1287,7 @@ class ApiServer
         function renderEvents() {
             $('eventCount').textContent = String(state.events.length);
             if (!state.events.length) {
-                $('events').innerHTML = '<div class="muted">Sem eventos ainda.</div>';
+                $('events').innerHTML = '<div class="muted">No events yet.</div>';
                 return;
             }
 
@@ -1299,8 +1299,8 @@ class ApiServer
                 return `
                     <div class="event${isNew ? ' new-event' : ''}" data-event-id="${escapeHtml(event.id || '')}">
                         <div class="event-main">
-                            <span>${escapeHtml(event.feature || event.nativeType || 'evento')}</span>
-                            <span class="badge ${isNew ? 'new' : ''}">${escapeHtml(isNew ? 'novo' : (event.nativeType || ''))}</span>
+                            <span>${escapeHtml(event.feature || event.nativeType || 'event')}</span>
+                            <span class="badge ${isNew ? 'new' : ''}">${escapeHtml(isNew ? 'new' : (event.nativeType || ''))}</span>
                         </div>
                         <div class="event-sub">
                             ${escapeHtml(device.imei)} · ${escapeHtml(device.model?.id || '')}<br>
@@ -1385,7 +1385,7 @@ HTML;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Multi-Vendor Relogios 4G</title>
+    <title>Multi-Vendor 4G Smartwatch API</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
     <style>
         html { box-sizing: border-box; }

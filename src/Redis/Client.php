@@ -20,7 +20,7 @@ class Client
         $this->nodeId = gethostname() ?: 'node-' . bin2hex(random_bytes(4));
 
         if (!extension_loaded('redis')) {
-            Logger::channel('redis')->warning("extensao 'redis' nao disponivel. Funcionalidades Redis desativadas.");
+            Logger::channel('redis')->warning("The 'redis' extension is not available. Redis features are disabled.");
             return;
         }
 
@@ -35,11 +35,11 @@ class Client
             }
             $this->redis->ping();
             $this->available = true;
-            Logger::channel('redis')->info("Ligado a $host:$port (node: {$this->nodeId})");
+            Logger::channel('redis')->info("Connected to $host:$port (node: {$this->nodeId})");
         } catch (\Throwable $e) {
             $this->redis = null;
             $this->available = false;
-            Logger::channel('redis')->warning("sem ligacao Redis (" . $e->getMessage() . ")");
+            Logger::channel('redis')->warning("Redis connection unavailable (" . $e->getMessage() . ")");
         }
     }
 

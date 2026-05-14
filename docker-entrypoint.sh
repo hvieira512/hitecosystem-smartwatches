@@ -14,7 +14,7 @@ else
 
         foreach (($lock["packages"] ?? []) as $package) {
             if (!isset($installedPackages[$package["name"]])) {
-                fwrite(STDERR, "Dependencia Composer em falta: {$package["name"]}\n");
+                fwrite(STDERR, "Missing Composer dependency: {$package["name"]}\n");
                 exit(1);
             }
         }
@@ -22,13 +22,13 @@ else
 fi
 
 if [ "$needs_composer_install" -eq 1 ]; then
-    echo "=== A instalar/atualizar dependencias (composer) ==="
+    echo "=== Installing/updating dependencies (composer) ==="
     composer install --no-dev --optimize-autoloader --no-interaction
 fi
 
-# Se estamos em ambiente Docker (DB_HOST definido), esperar pelo MySQL
+# In Docker environments (DB_HOST set), wait for MySQL.
 if [ -n "$DB_HOST" ]; then
-    echo "=== Aguardar MySQL em $DB_HOST:${DB_PORT:-3306} ==="
+    echo "=== Waiting for MySQL at $DB_HOST:${DB_PORT:-3306} ==="
     until php -r "
         try {
             new PDO('mysql:host=${DB_HOST};port=${DB_PORT:-3306}', '${DB_USER:-root}', '${DB_PASS:-}');
@@ -38,14 +38,14 @@ if [ -n "$DB_HOST" ]; then
             exit(1);
         }
     " 2>/dev/null; do
-        echo "MySQL indisponivel - a aguardar 2s..."
+        echo "MySQL unavailable - waiting 2s..."
         sleep 2
     done
-    echo "MySQL pronto!"
+    echo "MySQL ready!"
 
-    echo "=== A executar migracao ==="
+    echo "=== Running migration ==="
     php bin/migrate.php --seed
 fi
 
-echo "=== A iniciar servidor ==="
+echo "=== Starting server ==="
 exec "$@"

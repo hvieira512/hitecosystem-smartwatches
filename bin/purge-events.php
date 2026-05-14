@@ -50,7 +50,7 @@ foreach ($args as $arg) {
 }
 
 if (!$dbConfig || $dbConfig['host'] === '' || $dbConfig['name'] === '') {
-    Logger::channel('purge')->error('configuracao MySQL necessaria');
+    Logger::channel('purge')->error('MySQL configuration is required');
     exit(1);
 }
 
@@ -59,16 +59,16 @@ try {
     $devicesRepo = new DeviceRepository($db->pdo());
     $eventsRepo = new EventRepository($db->pdo());
 } catch (\PDOException $e) {
-    Logger::channel('purge')->error('MySQL indisponivel (' . $e->getMessage() . ')');
+    Logger::channel('purge')->error('MySQL unavailable (' . $e->getMessage() . ')');
     exit(1);
 }
 
 $cutoffDate = date('Y-m-d H:i:s', strtotime("-{$olderThan} days"));
-Logger::channel('purge')->info("Eventos anteriores a {$cutoffDate}, max {$keepPerDevice} por dispositivo");
+Logger::channel('purge')->info("Events before {$cutoffDate}, max {$keepPerDevice} per device");
 
 if ($dryRun) {
-    Logger::channel('purge')->info('Modo dry-run — sem alteracoes');
-    Logger::channel('purge')->info('Eventos removiveis por dispositivo:');
+    Logger::channel('purge')->info('Dry-run mode - no changes will be made');
+    Logger::channel('purge')->info('Removable events by device:');
 
     $imeis = $devicesRepo->all();
     $totalRemovable = 0;
@@ -78,14 +78,14 @@ if ($dryRun) {
 
         if ($count > $keepPerDevice) {
             $removable = $count - $keepPerDevice;
-            Logger::channel('purge')->info("  $imei: $count eventos, $removable removiveis");
+            Logger::channel('purge')->info("  $imei: $count events, $removable removable");
             $totalRemovable += $removable;
         }
     }
 
-    Logger::channel('purge')->info("Total removivel: ~{$totalRemovable} eventos");
+    Logger::channel('purge')->info("Total removable: ~{$totalRemovable} events");
     exit(0);
 }
 
 $purged = $eventsRepo->purgeOlderThan($cutoffDate, $keepPerDevice);
-Logger::channel('purge')->info("Removidos {$purged} eventos");
+Logger::channel('purge')->info("Removed {$purged} events");

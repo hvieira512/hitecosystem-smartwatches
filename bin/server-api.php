@@ -23,9 +23,9 @@ $db = null;
 if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
     try {
         $db = Database::connect($dbConfig);
-        Logger::channel('db')->info("Ligado a MySQL: {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
+        Logger::channel('db')->info("Connected to MySQL at {$dbConfig['host']}:{$dbConfig['port']}/{$dbConfig['name']}");
     } catch (\PDOException $e) {
-        Logger::channel('db')->warning('sem MySQL (' . $e->getMessage() . ')');
+        Logger::channel('db')->warning('MySQL unavailable (' . $e->getMessage() . ')');
     }
 }
 
@@ -42,8 +42,8 @@ if ($redisHost !== '') {
 
 $loop = Loop::get();
 
-// No WatchServer aqui — esta e uma instancia separada.
-// As chamadas de comando usam Redis Stream para comunicar com o processo WS.
+// No WatchServer here - this is a separate instance.
+// Command calls use Redis Stream to communicate with the WS process.
 
 $apiServer = new ApiServer(
     watchServer: null,
@@ -55,7 +55,7 @@ $apiServer = new ApiServer(
     wsServerUrl: $wsServerUrl,
 );
 
-Logger::channel('app')->info("=== HTTP API Server (separado) ===");
+Logger::channel('app')->info("=== HTTP API Server (separate) ===");
 Logger::channel('app')->info("http://$apiHost:$apiPort");
 
 $loop->run();
