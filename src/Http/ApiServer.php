@@ -24,6 +24,7 @@ class ApiServer
     private ?EventRepository $eventsRepo;
     private ?RedisClient $redis;
     private string $wsServerUrl;
+    private array $demoListeners = [];
     private HttpServer $http;
     private SocketServer $socket;
 
@@ -206,6 +207,10 @@ class ApiServer
                 $method === 'GET' && $path === '/metrics' => $this->metricsEndpoint(),
                 $method === 'GET' && $path === '/demo' => $this->demoPage(),
                 $method === 'POST' && $path === '/demo/simulate' => $this->simulateDeviceEvent($request),
+                $method === 'POST' && $path === '/demo/listener' => $this->startDemoListener($request),
+                $method === 'GET' && $path === '/demo/listeners' => $this->demoListeners(),
+                $method === 'DELETE' && preg_match('#^/demo/listener/([^/]+)$#', $path, $m) === 1
+                => $this->stopDemoListener($m[1]),
                 $method === 'GET' && $path === '/openapi.json' => $this->openApiSpec(),
                 $method === 'GET' && $path === '/docs' => $this->swaggerUi(),
                 default => $this->errorResponse('not_found', 'Endpoint not found', 404),
@@ -366,6 +371,10 @@ class ApiServer
         return $this->jsonResponse([
             'device' => $this->deviceResource($imei),
             'features' => $this->featureResources($caps->getFeatures()),
+            'nativeCommands' => [
+                'passive' => $caps->getPassive(),
+                'active' => $caps->getActive(),
+            ],
         ]);
     }
 
@@ -498,6 +507,164 @@ class ApiServer
             ],
             'device' => $this->deviceResource($imei, $deviceInfo),
         ], 202);
+    }
+
+    private function startDemoListener(ServerRequestInterface $request): Response
+    {
+        $body = json_decode((string)$request->getBody(), true) ?: [];
+        $imei = (string)($body['imei'] ?? '');
+
+        if ($imei === '') {
+            return $this->errorResponse(
+                'invalid_request',
+                'Field "imei" is required',
+                400
+            );
+        }
+
+        $whitelist = $this->whitelist();
+        if (!$whitelist->isAuthorized($imei)) {
+            return $this->errorResponse(
+                'device_not_found',
+                'Device not found or disabled',
+                404
+            );
+        }
+
+        $model = $whitelist->getModel($imei);
+        if (!$model || !DeviceCapabilities::forModel($model)) {
+            return $this->errorResponse(
+                'model_not_found',
+                'Device model not found',
+                404
+            );
+        }
+
+        $this->pruneDemoListeners();
+        if (isset($this->demoListeners[$imei])) {
+            return $this->jsonResponse([
+                'status' => 'already_running',
+                'listener' => $this->listenerResource($this->demoListeners[$imei]),
+            ]);
+        }
+
+        $root = dirname(__DIR__, 2);
+        $id = bin2hex(random_bytes(6));
+        $logPath = sys_get_temp_dir() . "/health-smartwatches-listener-$id.log";
+        $command = sprintf(
+            'php -d error_reporting=E_ALL %s --model %s --imei %s --listen --server %s',
+            escapeshellarg($root . '/simulator/simulate.php'),
+            escapeshellarg($model),
+            escapeshellarg($imei),
+            escapeshellarg($this->wsServerUrl)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($command . ' > ' . escapeshellarg($logPath) . ' 2>&1 & echo $!', $output, $exitCode);
+        $pid = isset($output[0]) ? (int)$output[0] : 0;
+
+        if ($exitCode !== 0 || $pid <= 0) {
+            return $this->errorResponse(
+                'listener_start_failed',
+                'Failed to start demo watch listener',
+                500,
+                ['logPath' => $logPath]
+            );
+        }
+
+        $listener = [
+            'id' => $id,
+            'imei' => $imei,
+            'model' => $model,
+            'pid' => $pid,
+            'logPath' => $logPath,
+            'startedAt' => time(),
+        ];
+        $this->demoListeners[$imei] = $listener;
+
+        Logger::channel('api')->info("Started demo watch listener: IMEI=$imei model=$model pid=$pid");
+
+        return $this->jsonResponse([
+            'status' => 'started',
+            'listener' => $this->listenerResource($listener),
+        ], 201);
+    }
+
+    private function stopDemoListener(string $imei): Response
+    {
+        $this->pruneDemoListeners();
+        if (!isset($this->demoListeners[$imei])) {
+            return $this->errorResponse(
+                'listener_not_found',
+                'No managed demo watch listener found for this IMEI',
+                404
+            );
+        }
+
+        $listener = $this->demoListeners[$imei];
+        $pid = (int)$listener['pid'];
+        if ($pid > 0 && $this->processIsRunning($pid)) {
+            exec('kill ' . $pid);
+        }
+
+        unset($this->demoListeners[$imei]);
+        Logger::channel('api')->info("Stopped demo watch listener: IMEI=$imei pid=$pid");
+
+        return $this->jsonResponse([
+            'status' => 'stopped',
+            'listener' => $this->listenerResource($listener, false),
+        ]);
+    }
+
+    private function demoListeners(): Response
+    {
+        $this->pruneDemoListeners();
+        $listeners = array_map(
+            fn(array $listener): array => $this->listenerResource($listener),
+            array_values($this->demoListeners)
+        );
+
+        return $this->jsonResponse([
+            'data' => $listeners,
+            'meta' => ['count' => count($listeners)],
+        ]);
+    }
+
+    private function pruneDemoListeners(): void
+    {
+        foreach ($this->demoListeners as $imei => $listener) {
+            if (!$this->processIsRunning((int)$listener['pid'])) {
+                unset($this->demoListeners[$imei]);
+            }
+        }
+    }
+
+    private function listenerResource(array $listener, ?bool $running = null): array
+    {
+        $imei = $listener['imei'];
+        return [
+            'id' => $listener['id'],
+            'imei' => $imei,
+            'model' => $listener['model'],
+            'pid' => (int)$listener['pid'],
+            'logPath' => $listener['logPath'],
+            'running' => $running ?? $this->processIsRunning((int)$listener['pid']),
+            'online' => $this->deviceIsOnline($imei),
+            'startedAt' => $listener['startedAt'],
+        ];
+    }
+
+    private function processIsRunning(int $pid): bool
+    {
+        if ($pid <= 0) {
+            return false;
+        }
+        if (function_exists('posix_kill')) {
+            return posix_kill($pid, 0);
+        }
+        exec('kill -0 ' . $pid . ' 2>/dev/null', $output, $exitCode);
+        return $exitCode === 0;
     }
 
     private function deviceResource(string $imei, ?array $info = null): array
@@ -788,572 +955,10 @@ class ApiServer
 
     private function demoPage(): Response
     {
-        $html = <<<'HTML'
-<!DOCTYPE html>
-<html lang="pt">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smartwatches 4G Demo</title>
-    <style>
-        :root {
-            color-scheme: light;
-            --bg: #f6f7f9;
-            --panel: #ffffff;
-            --line: #d8dde6;
-            --text: #17202c;
-            --muted: #667085;
-            --blue: #2f6fed;
-            --green: #16845b;
-            --amber: #b56b12;
-            --red: #b42318;
-            --ink: #111827;
-        }
-
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            min-height: 100vh;
-            background: var(--bg);
-            color: var(--text);
-            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            letter-spacing: 0;
-        }
-
-        header {
-            min-height: 88px;
-            padding: 20px 28px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 18px;
-            border-bottom: 1px solid var(--line);
-            background: #ffffff;
-        }
-
-        h1 {
-            margin: 0;
-            font-size: 24px;
-            line-height: 1.15;
-            font-weight: 720;
-        }
-
-        .statusbar {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--muted);
-            font-size: 13px;
-            white-space: nowrap;
-        }
-
-        .dot {
-            width: 9px;
-            height: 9px;
-            border-radius: 50%;
-            background: var(--green);
-            display: inline-block;
-        }
-
-        main {
-            display: grid;
-            grid-template-columns: minmax(260px, 320px) minmax(420px, 1fr) minmax(320px, 440px);
-            gap: 16px;
-            padding: 16px;
-            height: calc(100vh - 88px);
-        }
-
-        section {
-            min-height: 0;
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .section-head {
-            padding: 14px 16px;
-            border-bottom: 1px solid var(--line);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-        }
-
-        .section-head h2 {
-            margin: 0;
-            font-size: 14px;
-            line-height: 1.2;
-            font-weight: 700;
-        }
-
-        .content {
-            padding: 12px;
-            overflow: auto;
-            min-height: 0;
-        }
-
-        .device-list {
-            display: grid;
-            gap: 8px;
-        }
-
-        .device-button {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid var(--line);
-            border-radius: 6px;
-            background: #ffffff;
-            text-align: left;
-            cursor: pointer;
-            color: var(--text);
-        }
-
-        .device-button.active {
-            border-color: var(--blue);
-            box-shadow: inset 3px 0 0 var(--blue);
-        }
-
-        .device-title {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            font-weight: 650;
-            font-size: 13px;
-        }
-
-        .device-meta {
-            margin-top: 6px;
-            color: var(--muted);
-            font-size: 12px;
-            line-height: 1.35;
-            overflow-wrap: anywhere;
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            min-height: 22px;
-            padding: 2px 7px;
-            border-radius: 999px;
-            border: 1px solid var(--line);
-            color: var(--muted);
-            font-size: 12px;
-            font-weight: 650;
-            background: #fff;
-        }
-
-        .badge.online { color: var(--green); border-color: #9fd8c2; background: #effaf5; }
-        .badge.offline { color: var(--amber); border-color: #efd0a4; background: #fff7ed; }
-        .badge.disabled { color: var(--red); border-color: #f2b8b5; background: #fff1f0; }
-        .badge.new { color: #175cd3; border-color: #b2ccff; background: #eff4ff; }
-
-        .button-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
-            gap: 8px;
-        }
-
-        button.action {
-            min-height: 42px;
-            border: 1px solid #b9c7dc;
-            border-radius: 6px;
-            background: #f8fbff;
-            color: #173b78;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        button.action:hover { border-color: var(--blue); background: #eef5ff; }
-        button.action:disabled { cursor: not-allowed; color: #98a2b3; background: #f2f4f7; border-color: var(--line); }
-
-        .feature-row {
-            margin-top: 12px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-
-        .feature-chip {
-            padding: 5px 8px;
-            border-radius: 999px;
-            background: #f2f4f7;
-            color: #344054;
-            font-size: 12px;
-            border: 1px solid #e4e7ec;
-        }
-
-        .event-list {
-            display: grid;
-            gap: 8px;
-        }
-
-        .event {
-            border: 1px solid var(--line);
-            border-radius: 6px;
-            padding: 10px;
-            background: #ffffff;
-            transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
-        }
-
-        .event.new-event {
-            animation: event-arrived 1200ms ease-out;
-            border-color: #7aa7ff;
-            box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.12);
-        }
-
-        @keyframes event-arrived {
-            0% {
-                transform: translateY(-6px);
-                background: #eaf2ff;
-                box-shadow: 0 0 0 4px rgba(47, 111, 237, 0.24);
-            }
-            45% {
-                transform: translateY(0);
-                background: #f4f8ff;
-            }
-            100% {
-                transform: translateY(0);
-                background: #ffffff;
-                box-shadow: 0 0 0 0 rgba(47, 111, 237, 0);
-            }
-        }
-
-        .event-main {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            font-size: 13px;
-            font-weight: 700;
-        }
-
-        .event-sub {
-            margin-top: 6px;
-            color: var(--muted);
-            font-size: 12px;
-            line-height: 1.35;
-        }
-
-        pre {
-            margin: 0;
-            padding: 12px;
-            overflow: auto;
-            border-radius: 6px;
-            background: #101828;
-            color: #e6edf7;
-            font-size: 12px;
-            line-height: 1.45;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-        }
-
-        #lastResponse { min-height: 180px; }
-        .event pre { max-height: 140px; padding: 8px; }
-
-        .split {
-            display: grid;
-            gap: 12px;
-        }
-
-        .muted {
-            color: var(--muted);
-            font-size: 12px;
-        }
-
-        .error {
-            color: var(--red);
-            font-weight: 700;
-        }
-
-        @media (max-width: 1100px) {
-            main {
-                height: auto;
-                grid-template-columns: 1fr;
-            }
-
-            section {
-                min-height: 320px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <div>
-            <h1>Smartwatches 4G Demo</h1>
-            <div class="muted">HTTP API, WebSocket simulator, and passive events received by the server</div>
-        </div>
-        <div class="statusbar"><span class="dot"></span><span id="connectionText">live polling</span></div>
-    </header>
-
-    <main>
-        <section>
-            <div class="section-head">
-                <h2>Watches</h2>
-                <button class="action" id="refreshDevices" type="button">Refresh</button>
-            </div>
-            <div class="content">
-                <div id="devices" class="device-list"></div>
-            </div>
-        </section>
-
-        <section>
-            <div class="section-head">
-                <h2>Simulation</h2>
-                <span class="badge" id="selectedBadge">no selection</span>
-            </div>
-            <div class="content split">
-                <div class="button-grid" id="quickActions"></div>
-                <div>
-                    <div class="muted">Normalized features</div>
-                    <div class="feature-row" id="features"></div>
-                </div>
-                <div>
-                    <div class="muted">Latest HTTP response</div>
-                    <pre id="lastResponse">{}</pre>
-                </div>
-            </div>
-        </section>
-
-        <section>
-            <div class="section-head">
-                <h2>Received events</h2>
-                <span class="badge" id="eventCount">0</span>
-            </div>
-            <div class="content">
-                <div id="events" class="event-list"></div>
-            </div>
-        </section>
-    </main>
-
-    <script>
-        const state = {
-            devices: [],
-            selectedImei: null,
-            features: {},
-            events: [],
-            seenEventIds: new Set(),
-            newEventIds: new Set(),
-            firstEventLoad: true,
-        };
-
-        const quickFeatures = [
-            ['heart_rate', 'Heart rate'],
-            ['blood_pressure', 'Blood pressure'],
-            ['blood_oxygen', 'Oxygen'],
-            ['temperature', 'Temperature'],
-            ['location', 'Location'],
-            ['heartbeat', 'Heartbeat'],
-            ['activity', 'Activity'],
-            ['battery', 'Battery'],
-            ['sleep', 'Sleep'],
-            ['ecg', 'ECG'],
-        ];
-
-        const $ = (id) => document.getElementById(id);
-
-        async function api(path, options = {}) {
-            const response = await fetch(path, {
-                ...options,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(options.headers || {}),
-                },
-            });
-            const text = await response.text();
-            const data = text ? JSON.parse(text) : null;
-            if (!response.ok) {
-                throw data || { error: { code: 'http_error', message: response.statusText } };
-            }
-            return data;
-        }
-
-        function pretty(value) {
-            return JSON.stringify(value, null, 2);
-        }
-
-        function selectedDevice() {
-            return state.devices.find((item) => item.device.imei === state.selectedImei)?.device || null;
-        }
-
-        async function loadDevices() {
-            const payload = await api('/devices');
-            state.devices = payload.data || [];
-            if (!state.selectedImei && state.devices.length) {
-                state.selectedImei = state.devices[0].device.imei;
-            }
-            renderDevices();
-            await loadFeatures();
-        }
-
-        async function loadFeatures() {
-            const device = selectedDevice();
-            if (!device) {
-                state.features = {};
-                renderActions();
-                return;
-            }
-
-            try {
-                const payload = await api(`/devices/${device.imei}/features`);
-                state.features = payload.features || {};
-            } catch (error) {
-                state.features = {};
-                $('lastResponse').textContent = pretty(error);
-            }
-
-            renderActions();
-        }
-
-        async function loadEvents() {
-            try {
-                const payload = await api('/events/recent?limit=40');
-                const incoming = payload.data || [];
-                const incomingIds = incoming
-                    .map(({ event }) => event?.id)
-                    .filter((id) => id !== null && id !== undefined);
-
-                state.newEventIds = new Set(
-                    state.firstEventLoad
-                        ? []
-                        : incomingIds.filter((id) => !state.seenEventIds.has(id))
-                );
-                incomingIds.forEach((id) => state.seenEventIds.add(id));
-                state.firstEventLoad = false;
-                state.events = incoming;
-                renderEvents();
-                $('connectionText').textContent = `live polling - ${new Date().toLocaleTimeString()}`;
-            } catch (error) {
-                $('connectionText').innerHTML = '<span class="error">disconnected</span>';
-            }
-        }
-
-        function renderDevices() {
-            $('devices').innerHTML = state.devices.map(({ device }) => {
-                const active = device.imei === state.selectedImei ? ' active' : '';
-                const statusClass = !device.status.enabled ? 'disabled' : (device.status.online ? 'online' : 'offline');
-                const statusText = !device.status.enabled ? 'disabled' : (device.status.online ? 'online' : 'offline');
-                return `
-                    <button class="device-button${active}" type="button" data-imei="${device.imei}">
-                        <div class="device-title">
-                            <span>${escapeHtml(device.imei)}</span>
-                            <span class="badge ${statusClass}">${statusText}</span>
-                        </div>
-                        <div class="device-meta">
-                            ${escapeHtml(device.model.id)}<br>
-                            ${escapeHtml(device.model.protocol || '')}
-                        </div>
-                    </button>
-                `;
-            }).join('');
-
-            document.querySelectorAll('.device-button').forEach((button) => {
-                button.addEventListener('click', async () => {
-                    state.selectedImei = button.dataset.imei;
-                    renderDevices();
-                    await loadFeatures();
-                });
-            });
-        }
-
-        function renderActions() {
-            const device = selectedDevice();
-            $('selectedBadge').textContent = device ? device.model.id : 'no selection';
-
-            $('features').innerHTML = Object.keys(state.features).map((feature) => (
-                `<span class="feature-chip">${escapeHtml(feature)}</span>`
-            )).join('');
-
-            $('quickActions').innerHTML = quickFeatures.map(([feature, title]) => {
-                const passiveTypes = state.features[feature]?.passiveTypes || [];
-                const nativeType = passiveTypes[0] || '';
-                const disabled = !device || !nativeType || !device.status.enabled;
-                return `
-                    <button class="action" type="button" data-type="${escapeHtml(nativeType)}" ${disabled ? 'disabled' : ''}>
-                        ${escapeHtml(title)}
-                    </button>
-                `;
-            }).join('');
-
-            document.querySelectorAll('#quickActions button').forEach((button) => {
-                button.addEventListener('click', () => simulate(button.dataset.type));
-            });
-        }
-
-        function renderEvents() {
-            $('eventCount').textContent = String(state.events.length);
-            if (!state.events.length) {
-                $('events').innerHTML = '<div class="muted">No events yet.</div>';
-                return;
-            }
-
-            $('events').innerHTML = state.events.map(({ device, event }) => {
-                const normalized = Object.keys(event.normalized || {}).length
-                    ? pretty(event.normalized)
-                    : pretty(event.nativePayload || {});
-                const isNew = state.newEventIds.has(event.id);
-                return `
-                    <div class="event${isNew ? ' new-event' : ''}" data-event-id="${escapeHtml(event.id || '')}">
-                        <div class="event-main">
-                            <span>${escapeHtml(event.feature || event.nativeType || 'event')}</span>
-                            <span class="badge ${isNew ? 'new' : ''}">${escapeHtml(isNew ? 'new' : (event.nativeType || ''))}</span>
-                        </div>
-                        <div class="event-sub">
-                            ${escapeHtml(device.imei)} · ${escapeHtml(device.model?.id || '')}<br>
-                            ${new Date(event.receivedAt).toLocaleTimeString()}
-                        </div>
-                        <div class="event-sub"><pre>${escapeHtml(normalized)}</pre></div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        async function simulate(nativeType) {
-            const device = selectedDevice();
-            if (!device || !nativeType) return;
-
-            const body = {
-                imei: device.imei,
-                model: device.model.id,
-                type: nativeType,
-            };
-
-            try {
-                const response = await api('/demo/simulate', {
-                    method: 'POST',
-                    body: JSON.stringify(body),
-                });
-                $('lastResponse').textContent = pretty(response);
-                setTimeout(loadEvents, 450);
-                setTimeout(loadDevices, 900);
-            } catch (error) {
-                $('lastResponse').textContent = pretty(error);
-            }
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? '')
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
-                .replaceAll('"', '&quot;')
-                .replaceAll("'", '&#039;');
-        }
-
-        $('refreshDevices').addEventListener('click', loadDevices);
-
-        loadDevices();
-        loadEvents();
-        setInterval(loadEvents, 1000);
-        setInterval(loadDevices, 5000);
-    </script>
-</body>
-</html>
-HTML;
+        $path = __DIR__ . '/demo.html';
+        $html = is_file($path)
+            ? file_get_contents($path)
+            : '<!DOCTYPE html><html lang="en"><body>Demo page unavailable.</body></html>';
 
         return new Response(
             200,
@@ -1381,7 +986,7 @@ HTML;
     {
         $html = <<<'HTML'
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

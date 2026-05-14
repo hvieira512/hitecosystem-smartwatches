@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smartwatches 4G Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f6f7f9; letter-spacing: 0; }
+        .app-shell { min-height: calc(100vh - 73px); }
+        .scroll-panel { min-height: 0; overflow: auto; }
+        .device-button.active { border-color: #0d6efd; background: #eef5ff; }
+        .feature-chip { font-size: .75rem; }
+        .event-card.new-event { animation: flash 1.6s ease-out; }
+        pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-size: .78rem; }
+        @keyframes flash {
+            from { box-shadow: 0 0 0 .25rem rgba(13, 110, 253, .2); }
+            to { box-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar bg-white border-bottom">
+        <div class="container-fluid gap-3">
+            <div>
+                <h1 class="h4 mb-1">Smartwatches 4G Demo</h1>
+                <div class="small text-secondary">Passive watch events and active server commands</div>
+            </div>
+            <div class="d-flex align-items-center gap-2 small">
+                <span class="badge text-bg-success">API</span>
+                <span id="connectionText" class="text-secondary">polling...</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container-fluid py-3">
+        <div class="row g-3 app-shell">
+            <section class="col-12 col-xl-3">
+                <div class="card">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold">Devices</span>
+                        <button id="refreshDevices" class="btn btn-sm btn-outline-secondary" type="button">Refresh</button>
+                    </div>
+                    <div id="devices" class="card-body d-grid gap-2 scroll-panel"></div>
+                </div>
+            </section>
+
+            <section class="col-12 col-xl-5">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                            <span class="fw-semibold">Demo Actions</span>
+                            <span id="selectedBadge" class="badge text-bg-light border">no selection</span>
+                        </div>
+                        <div class="btn-group w-100" role="group" aria-label="Demo action type">
+                            <button id="eventsTab" class="btn btn-outline-primary active" type="button">Watch Events</button>
+                            <button id="commandsTab" class="btn btn-outline-primary" type="button">Server Commands</button>
+                        </div>
+                    </div>
+                    <div class="card-body scroll-panel">
+                        <div class="mb-3">
+                            <div class="small text-secondary mb-2">Supported features</div>
+                            <div id="features" class="d-flex flex-wrap gap-2"></div>
+                        </div>
+
+                        <div id="watchEventsPanel">
+                            <div class="alert alert-light border small mb-3">
+                                These buttons simulate data sent from the watch to the server.
+                            </div>
+                            <div id="passiveActions" class="row g-2"></div>
+                        </div>
+
+                        <div id="serverCommandsPanel" hidden>
+                            <div class="alert alert-light border small mb-3">
+                                These buttons send commands from the server to an online watch.
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                                <button id="startListener" class="btn btn-primary" type="button">Start demo watch</button>
+                                <button id="stopListener" class="btn btn-outline-danger" type="button">Stop demo watch</button>
+                            </div>
+                            <p id="listenerNote" class="small text-secondary mb-3"></p>
+                            <div id="activeActions" class="row g-2 mb-4"></div>
+
+                            <div class="border-top pt-3">
+                                <label class="form-label fw-semibold" for="nativeCommand">Advanced native command</label>
+                                <select id="nativeCommand" class="form-select mb-2"></select>
+                                <textarea id="nativePayload" class="form-control font-monospace mb-2" rows="5">{}</textarea>
+                                <button id="sendNativeCommand" class="btn btn-outline-primary" type="button">Send native command</button>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <div class="small text-secondary mb-2">Last API response</div>
+                            <pre id="lastResponse" class="border rounded bg-body-tertiary p-3">No request yet.</pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="col-12 col-xl-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold">Recent Events</span>
+                        <span id="eventCount" class="badge text-bg-light border">0</span>
+                    </div>
+                    <div id="events" class="card-body d-grid gap-2 scroll-panel"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const state = {
+            devices: [],
+            selectedImei: null,
+            features: {},
+            nativeCommands: { passive: [], active: [] },
+            listeners: {},
+            mode: 'events',
+            events: [],
+            seenEventIds: new Set(),
+            newEventIds: new Set(),
+            firstEventLoad: true,
+        };
+
+        const passiveFeatures = [
+            ['heart_rate', 'Heart rate'],
+            ['blood_pressure', 'Blood pressure'],
+            ['blood_oxygen', 'Oxygen'],
+            ['temperature', 'Temperature'],
+            ['location', 'Location'],
+            ['heartbeat', 'Heartbeat'],
+            ['activity', 'Activity'],
+            ['battery', 'Battery'],
+            ['sleep', 'Sleep'],
+            ['ecg', 'ECG'],
+        ];
+
+        const activeFeatureOrder = [
+            'heart_rate',
+            'location',
+            'blood_pressure',
+            'blood_oxygen',
+            'temperature',
+            'find_device',
+            'restart',
+            'power_off',
+            'sos',
+            'reminders',
+        ];
+
+        const $ = (id) => document.getElementById(id);
+
+        async function api(path, options = {}) {
+            const response = await fetch(path, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {}),
+                },
+            });
+            const text = await response.text();
+            const data = text ? JSON.parse(text) : null;
+            if (!response.ok) {
+                throw data || { error: { code: 'http_error', message: response.statusText } };
+            }
+            return data;
+        }
+
+        function pretty(value) {
+            return JSON.stringify(value, null, 2);
+        }
+
+        function selectedDevice() {
+            return state.devices.find((item) => item.device.imei === state.selectedImei)?.device || null;
+        }
+
+        function selectedListener() {
+            return state.selectedImei ? state.listeners[state.selectedImei] || null : null;
+        }
+
+        async function loadDevices() {
+            const payload = await api('/devices');
+            state.devices = payload.data || [];
+            if (!state.selectedImei && state.devices.length) {
+                state.selectedImei = state.devices[0].device.imei;
+            }
+            renderDevices();
+            await loadFeatures();
+            renderActions();
+        }
+
+        async function loadFeatures() {
+            const device = selectedDevice();
+            if (!device) {
+                state.features = {};
+                state.nativeCommands = { passive: [], active: [] };
+                renderActions();
+                return;
+            }
+
+            try {
+                const payload = await api(`/devices/${device.imei}/features`);
+                state.features = payload.features || {};
+                state.nativeCommands = payload.nativeCommands || { passive: [], active: [] };
+            } catch (error) {
+                state.features = {};
+                state.nativeCommands = { passive: [], active: [] };
+                $('lastResponse').textContent = pretty(error);
+            }
+
+            renderActions();
+        }
+
+        async function loadListeners() {
+            try {
+                const payload = await api('/demo/listeners');
+                state.listeners = Object.fromEntries((payload.data || []).map((listener) => [listener.imei, listener]));
+            } catch (error) {
+                state.listeners = {};
+                $('lastResponse').textContent = pretty(error);
+            }
+            renderActions();
+        }
+
+        async function loadEvents() {
+            try {
+                const payload = await api('/events/recent?limit=40');
+                const incoming = payload.data || [];
+                const incomingIds = incoming
+                    .map(({ event }) => event?.id)
+                    .filter((id) => id !== null && id !== undefined);
+
+                state.newEventIds = new Set(
+                    state.firstEventLoad
+                        ? []
+                        : incomingIds.filter((id) => !state.seenEventIds.has(id))
+                );
+                incomingIds.forEach((id) => state.seenEventIds.add(id));
+                state.firstEventLoad = false;
+                state.events = incoming;
+                renderEvents();
+                $('connectionText').textContent = `live polling - ${new Date().toLocaleTimeString()}`;
+            } catch (error) {
+                $('connectionText').innerHTML = '<span class="text-danger">disconnected</span>';
+            }
+        }
+
+        function renderDevices() {
+            $('devices').innerHTML = state.devices.map(({ device }) => {
+                const active = device.imei === state.selectedImei ? ' active' : '';
+                const statusClass = !device.status.enabled
+                    ? 'text-bg-secondary'
+                    : (device.status.online ? 'text-bg-success' : 'text-bg-light border');
+                const statusText = !device.status.enabled ? 'disabled' : (device.status.online ? 'online' : 'offline');
+                return `
+                    <button class="device-button btn btn-light text-start border p-3${active}" type="button" data-imei="${escapeHtml(device.imei)}">
+                        <div class="d-flex align-items-start justify-content-between gap-2">
+                            <span class="fw-semibold">${escapeHtml(device.imei)}</span>
+                            <span class="badge ${statusClass}">${statusText}</span>
+                        </div>
+                        <div class="small text-secondary mt-2">
+                            ${escapeHtml(device.model.id)}<br>
+                            ${escapeHtml(device.model.protocol || '')}
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            document.querySelectorAll('.device-button').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    state.selectedImei = button.dataset.imei;
+                    renderDevices();
+                    await loadFeatures();
+                });
+            });
+        }
+
+        function renderActions() {
+            const device = selectedDevice();
+            const listener = selectedListener();
+            const isOnline = !!device?.status?.online;
+            const activeFeatures = activeFeatureOrder
+                .filter((feature) => (state.features[feature]?.activeTypes || []).length > 0);
+            const nativeCommands = unique([
+                ...(state.nativeCommands.active || []),
+                ...Object.values(state.features).flatMap((feature) => feature.activeTypes || []),
+            ]);
+
+            $('selectedBadge').textContent = device ? device.model.id : 'no selection';
+
+            $('features').innerHTML = Object.keys(state.features).map((feature) => (
+                `<span class="feature-chip badge rounded-pill text-bg-light border">${escapeHtml(featureLabel(feature))}</span>`
+            )).join('');
+
+            $('eventsTab').classList.toggle('active', state.mode === 'events');
+            $('commandsTab').classList.toggle('active', state.mode === 'commands');
+            $('watchEventsPanel').hidden = state.mode !== 'events';
+            $('serverCommandsPanel').hidden = state.mode !== 'commands';
+
+            $('passiveActions').innerHTML = passiveFeatures.map(([feature, title]) => {
+                const passiveTypes = state.features[feature]?.passiveTypes || [];
+                const nativeType = passiveTypes[0] || '';
+                const disabled = !device || !nativeType || !device.status.enabled;
+                return `
+                    <div class="col-12 col-sm-6">
+                        <button class="btn btn-outline-primary w-100" type="button" data-type="${escapeHtml(nativeType)}" ${disabled ? 'disabled' : ''}>
+                            Send ${escapeHtml(title.toLowerCase())} event
+                        </button>
+                    </div>
+                `;
+            }).join('');
+
+            document.querySelectorAll('#passiveActions button').forEach((button) => {
+                button.addEventListener('click', () => simulate(button.dataset.type));
+            });
+
+            $('listenerNote').textContent = listener
+                ? `Managed demo watch is running (pid ${listener.pid}). Active commands can be sent while the device is online.`
+                : 'Start a demo watch to keep the simulator connected, then send active commands from the server.';
+
+            $('startListener').disabled = !device || !device.status.enabled || !!listener || isOnline;
+            $('stopListener').disabled = !listener;
+
+            $('activeActions').innerHTML = activeFeatures.map((feature) => {
+                const disabled = !device || !isOnline;
+                return `
+                    <div class="col-12 col-sm-6">
+                        <button class="btn btn-outline-primary w-100" type="button" data-feature="${escapeHtml(feature)}" ${disabled ? 'disabled' : ''}>
+                            ${escapeHtml(activeLabel(feature))}
+                        </button>
+                    </div>
+                `;
+            }).join('') || '<div class="text-secondary small">No active feature commands for this model.</div>';
+
+            document.querySelectorAll('#activeActions button').forEach((button) => {
+                button.addEventListener('click', () => sendFeatureCommand(button.dataset.feature));
+            });
+
+            $('nativeCommand').innerHTML = nativeCommands.map((type) => (
+                `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`
+            )).join('');
+
+            $('nativeCommand').disabled = nativeCommands.length === 0;
+            $('nativePayload').disabled = nativeCommands.length === 0;
+            $('sendNativeCommand').disabled = !device || !isOnline || nativeCommands.length === 0;
+        }
+
+        function unique(values) {
+            return [...new Set(values.filter(Boolean))];
+        }
+
+        function featureLabel(feature) {
+            return feature
+                .split('_')
+                .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                .join(' ');
+        }
+
+        function activeLabel(feature) {
+            if (feature === 'find_device') return 'Find device';
+            if (feature === 'restart') return 'Restart device';
+            if (feature === 'power_off') return 'Power off device';
+            if (feature === 'sos') return 'Send SOS settings';
+            if (feature === 'reminders') return 'Send reminders';
+            return `Request ${featureLabel(feature).toLowerCase()}`;
+        }
+
+        function renderEvents() {
+            $('eventCount').textContent = String(state.events.length);
+            if (!state.events.length) {
+                $('events').innerHTML = '<div class="text-secondary small">No events yet.</div>';
+                return;
+            }
+
+            $('events').innerHTML = state.events.map(({ device, event }) => {
+                const normalized = Object.keys(event.normalized || {}).length
+                    ? pretty(event.normalized)
+                    : pretty(event.nativePayload || {});
+                const isNew = state.newEventIds.has(event.id);
+                return `
+                    <div class="event-card border rounded p-3 bg-white${isNew ? ' new-event' : ''}" data-event-id="${escapeHtml(event.id || '')}">
+                        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                            <span class="fw-semibold">${escapeHtml(event.feature || event.nativeType || 'event')}</span>
+                            <span class="badge ${isNew ? 'text-bg-primary' : 'text-bg-light border'}">${escapeHtml(isNew ? 'new' : (event.nativeType || ''))}</span>
+                        </div>
+                        <div class="small text-secondary mb-2">
+                            ${escapeHtml(device.imei)} · ${escapeHtml(device.model?.id || '')}<br>
+                            ${new Date(event.receivedAt).toLocaleTimeString()}
+                        </div>
+                        <pre class="border rounded bg-body-tertiary p-2">${escapeHtml(normalized)}</pre>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function simulate(nativeType) {
+            const device = selectedDevice();
+            if (!device || !nativeType) return;
+
+            const body = {
+                imei: device.imei,
+                model: device.model.id,
+                type: nativeType,
+            };
+
+            try {
+                const response = await api('/demo/simulate', {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                });
+                $('lastResponse').textContent = pretty(response);
+                setTimeout(loadEvents, 450);
+                setTimeout(loadDevices, 900);
+            } catch (error) {
+                $('lastResponse').textContent = pretty(error);
+            }
+        }
+
+        async function startListener() {
+            const device = selectedDevice();
+            if (!device) return;
+
+            try {
+                const response = await api('/demo/listener', {
+                    method: 'POST',
+                    body: JSON.stringify({ imei: device.imei }),
+                });
+                $('lastResponse').textContent = pretty(response);
+                await loadListeners();
+                setTimeout(loadDevices, 900);
+            } catch (error) {
+                $('lastResponse').textContent = pretty(error);
+            }
+        }
+
+        async function stopListener() {
+            const device = selectedDevice();
+            if (!device) return;
+
+            try {
+                const response = await api(`/demo/listener/${device.imei}`, {
+                    method: 'DELETE',
+                });
+                $('lastResponse').textContent = pretty(response);
+                await loadListeners();
+                setTimeout(loadDevices, 900);
+            } catch (error) {
+                $('lastResponse').textContent = pretty(error);
+            }
+        }
+
+        async function sendFeatureCommand(feature) {
+            const device = selectedDevice();
+            if (!device || !feature) return;
+
+            try {
+                const response = await api(`/devices/${device.imei}/features/${feature}/command`, {
+                    method: 'POST',
+                    body: JSON.stringify({ data: {} }),
+                });
+                $('lastResponse').textContent = pretty(response);
+            } catch (error) {
+                $('lastResponse').textContent = pretty(error);
+            }
+        }
+
+        async function sendNativeCommand() {
+            const device = selectedDevice();
+            const type = $('nativeCommand').value;
+            if (!device || !type) return;
+
+            let data;
+            try {
+                data = JSON.parse($('nativePayload').value || '{}');
+            } catch (error) {
+                $('lastResponse').textContent = pretty({ error: { code: 'invalid_json', message: 'Payload must be valid JSON' } });
+                return;
+            }
+
+            try {
+                const response = await api(`/devices/${device.imei}/command`, {
+                    method: 'POST',
+                    body: JSON.stringify({ type, data }),
+                });
+                $('lastResponse').textContent = pretty(response);
+            } catch (error) {
+                $('lastResponse').textContent = pretty(error);
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
+        $('refreshDevices').addEventListener('click', async () => {
+            await loadDevices();
+            await loadListeners();
+        });
+        $('eventsTab').addEventListener('click', () => {
+            state.mode = 'events';
+            renderActions();
+        });
+        $('commandsTab').addEventListener('click', () => {
+            state.mode = 'commands';
+            renderActions();
+        });
+        $('startListener').addEventListener('click', startListener);
+        $('stopListener').addEventListener('click', stopListener);
+        $('sendNativeCommand').addEventListener('click', sendNativeCommand);
+
+        loadDevices();
+        loadListeners();
+        loadEvents();
+        setInterval(loadEvents, 1000);
+        setInterval(loadDevices, 5000);
+        setInterval(loadListeners, 5000);
+    </script>
+</body>
+</html>
