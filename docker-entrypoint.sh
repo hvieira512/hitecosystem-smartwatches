@@ -2,9 +2,28 @@
 set -e
 
 # Garantir dependencias instaladas (importante quando vendor e volume mounted)
-if [ ! -d "vendor" ] || [ ! -f "vendor/autoload.php" ]; then
-    echo "=== A instalar dependencias (composer) ==="
-    composer install --no-dev --optimize-autoloader
+needs_composer_install=0
+
+if [ ! -d "vendor" ] || [ ! -f "vendor/autoload.php" ] || [ ! -f "vendor/composer/installed.php" ]; then
+    needs_composer_install=1
+else
+    php -r '
+        $lock = json_decode(file_get_contents("composer.lock"), true);
+        $installed = require "vendor/composer/installed.php";
+        $installedPackages = $installed["versions"] ?? [];
+
+        foreach (($lock["packages"] ?? []) as $package) {
+            if (!isset($installedPackages[$package["name"]])) {
+                fwrite(STDERR, "Dependencia Composer em falta: {$package["name"]}\n");
+                exit(1);
+            }
+        }
+    ' || needs_composer_install=1
+fi
+
+if [ "$needs_composer_install" -eq 1 ]; then
+    echo "=== A instalar/atualizar dependencias (composer) ==="
+    composer install --no-dev --optimize-autoloader --no-interaction
 fi
 
 # Se estamos em ambiente Docker (DB_HOST definido), esperar pelo MySQL
