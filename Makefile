@@ -1,4 +1,4 @@
-.PHONY: up down build rebuild logs shell migrate simulate worker worker-logs ws api nginx nginx-logs purge ssl-setup redis-cli ps dev dev-ws dev-api
+.PHONY: up down build rebuild logs shell migrate simulate simulate-vivistar-tcp listen-vivistar-tcp worker worker-logs ws api nginx nginx-logs purge ssl-setup redis-cli ps dev dev-ws dev-api
 
 up:
 	docker compose up -d
@@ -31,6 +31,27 @@ seed-clients:
 
 simulate:
 	docker compose exec ws php simulator/simulate.php $(ARGS)
+
+# Native Vivistar TCP simulation (defaults can be overridden).
+# Example:
+#   make simulate-vivistar-tcp IMEI=865028000000308 COMMAND=AP49 DATA='{"heartRate":68}'
+simulate-vivistar-tcp:
+	docker compose exec ws php simulator/simulate.php \
+		--server tcp://127.0.0.1:9000 \
+		--model $(or $(MODEL),VIVISTAR-CARE) \
+		--imei $(or $(IMEI),865028000000308) \
+		--command $(or $(COMMAND),AP49) \
+		$(if $(DATA),--data '$(DATA)',)
+
+# Native Vivistar TCP listen mode (for API -> device downlink tests).
+# Example:
+#   make listen-vivistar-tcp IMEI=865028000000308
+listen-vivistar-tcp:
+	docker compose exec ws php simulator/simulate.php \
+		--server tcp://127.0.0.1:9000 \
+		--model $(or $(MODEL),VIVISTAR-CARE) \
+		--imei $(or $(IMEI),865028000000308) \
+		--listen
 
 worker:
 	docker compose up -d worker

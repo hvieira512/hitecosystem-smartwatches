@@ -6,6 +6,7 @@
  * Usage:
  *   php simulator/simulate.php --model WONLEX-PRO --imei 865028000000306 --command upHeartRate
  *   php simulator/simulate.php --model VIVISTAR-LITE --imei 865028000000309 --command AP49
+ *   php simulator/simulate.php --model VIVISTAR-CARE --imei 865028000000308 --command AP49 --server tcp://127.0.0.1:9000
  *   php simulator/simulate.php --list-models
  *   php simulator/simulate.php --model WONLEX-PRO --capabilities
  */
@@ -68,11 +69,13 @@ if (!$model || !$imei) {
     echo "Usage:\n";
     echo "  php simulator/simulate.php --model MODEL --imei IMEI [options]\n\n";
     echo "Options:\n";
-    echo "  --command TYPE        Send a single command (ex: upHeartRate)\n";
-    echo "  --data JSON           Command data (ex: '{\"value\":75}')\n";
+    echo "  --command TYPE        Send a single command (ex: upHeartRate, AP49)\n";
+    echo "  --data JSON           Command data (ex: '{\"value\":75}' or '{\"heartRate\":72}')\n";
     echo "  --interactive         Interactive mode (console)\n";
     echo "  --listen              Keep the connection open and listen for commands\n";
-    echo "  --server URL          WebSocket server URL (default: ws://127.0.0.1:8080)\n";
+    echo "  --server URL          Ingress URL (default: ws://127.0.0.1:8080)\n";
+    echo "                        Vivistar native TCP can use tcp://127.0.0.1:9000\n";
+    echo "\nProtocol is auto-selected from model capabilities (wonlex-json / vivistar-iw).\n";
     echo "  --list-models         List available models\n";
     echo "  --capabilities        Show capabilities for a model\n";
     exit(1);
@@ -100,6 +103,7 @@ $serverUrl = $args['server'] ?? 'ws://127.0.0.1:8080';
 $dataJson = $args['data'] ?? null;
 $interactive = isset($args['interactive']);
 $listen = isset($args['listen']);
+$protocol = $caps->getProtocol() ?? 'wonlex-json';
 
 // --- WebSocketClient ---
 
@@ -150,9 +154,9 @@ class WsClient
         $this->connected = true;
     }
 
-    public function send(string $data): void
+    public function send(string $data, int $opcode = 0x2): void
     {
-        $frame = $this->encodeFrame($data);
+        $frame = $this->encodeFrame($data, $opcode);
         fwrite($this->socket, $frame);
     }
 
@@ -222,7 +226,7 @@ class WsClient
         return $payload;
     }
 
-    private function encodeFrame(string $data): string
+    private function encodeFrame(string $data, int $opcode = 0x2): string
     {
         $len = strlen($data);
         $maskKey = random_bytes(4);
@@ -233,7 +237,7 @@ class WsClient
             $masked .= chr(ord($data[$i]) ^ ord($maskKey[$i % 4]));
         }
 
-        $frame = chr(0x82); // FIN + opcode binary
+        $frame = chr(0x80 | ($opcode & 0x0F)); // FIN + opcode
 
         if ($len < 126) {
             $frame .= chr(0x80 | $len); // mascara + length
@@ -269,27 +273,132 @@ class WsClient
     }
 }
 
-// --- Helper functions ---
-
-function sendPacket(WsClient $ws, array $data): void
+class TcpTextClient
 {
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE);
-    $packet = pack("nn", 0xFCAF, strlen($json)) . $json;
-    $ws->send($packet);
+    private $socket;
+    private string $buffer = '';
+
+    public function __construct(string $url)
+    {
+        $parts = parse_url($url);
+        $host = $parts['host'] ?? '127.0.0.1';
+        $port = $parts['port'] ?? 9000;
+
+        $errno = 0;
+        $errstr = '';
+        $this->socket = @fsockopen($host, $port, $errno, $errstr, 5);
+        if (!$this->socket) {
+            throw new RuntimeException("Failed to connect: $errstr ($errno)");
+        }
+        stream_set_blocking($this->socket, true);
+    }
+
+    public function send(string $data): void
+    {
+        fwrite($this->socket, $data);
+    }
+
+    public function receive(?int $timeout = null): ?string
+    {
+        if (!is_resource($this->socket)) {
+            return null;
+        }
+
+        $timeoutSec = $timeout ?? 0;
+        stream_set_timeout($this->socket, $timeoutSec);
+        $start = microtime(true);
+
+        while (true) {
+            $pos = strpos($this->buffer, '#');
+            if ($pos !== false) {
+                $packet = substr($this->buffer, 0, $pos + 1);
+                $this->buffer = substr($this->buffer, $pos + 1);
+                return trim($packet);
+            }
+
+            $chunk = fread($this->socket, 1024);
+            if ($chunk === false || $chunk === '') {
+                $meta = stream_get_meta_data($this->socket);
+                if (($meta['timed_out'] ?? false) || ($timeout !== null && (microtime(true) - $start) >= $timeout)) {
+                    return null;
+                }
+                if (feof($this->socket)) {
+                    return null;
+                }
+                usleep(50000);
+                continue;
+            }
+
+            $this->buffer .= $chunk;
+        }
+    }
+
+    public function close(): void
+    {
+        if (is_resource($this->socket)) {
+            fclose($this->socket);
+        }
+        $this->socket = null;
+        $this->buffer = '';
+    }
+
+    public function __destruct()
+    {
+        $this->close();
+    }
 }
 
-function receivePacket(WsClient $ws, ?int $timeout = null): ?array
+// --- Helper functions ---
+
+function sendProtocolPacket(WsClient|TcpTextClient $ws, string $protocol, array|string $payload): void
+{
+    if ($protocol === 'vivistar-iw') {
+        $line = is_string($payload) ? $payload : ($payload['raw'] ?? '');
+        if (!is_string($line) || $line === '') {
+            throw new RuntimeException('Vivistar payload must be a non-empty string line');
+        }
+        if ($ws instanceof WsClient) {
+            $ws->send($line, 0x1);
+        } else {
+            $ws->send($line);
+        }
+        return;
+    }
+
+    if ($ws instanceof TcpTextClient) {
+        throw new RuntimeException('Wonlex simulator requires WebSocket transport (ws://)');
+    }
+
+    if (!is_array($payload)) {
+        throw new RuntimeException('Wonlex payload must be an array');
+    }
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    $packet = pack("nn", 0xFCAF, strlen($json)) . $json;
+    $ws->send($packet, 0x2);
+}
+
+function receiveProtocolPacket(WsClient|TcpTextClient $ws, string $protocol, ?int $timeout = null): ?array
 {
     $raw = $ws->receive($timeout);
-    if ($raw === null || $raw === '') return null;
-    if (strlen($raw) < 4) return null;
+    if ($raw === null || $raw === '') {
+        return null;
+    }
 
+    if ($protocol === 'vivistar-iw') {
+        return parseVivistarLine($raw);
+    }
+
+    if (strlen($raw) < 4) {
+        return null;
+    }
     $header = unpack("nstart/nlength", substr($raw, 0, 4));
-    if ($header['start'] !== 0xFCAF) return null;
+    if (($header['start'] ?? null) !== 0xFCAF) {
+        return null;
+    }
 
     $jsonStr = substr($raw, 4, $header['length']);
     $data = json_decode($jsonStr, true);
-    return $data ?: null;
+    return is_array($data) ? $data : null;
 }
 
 function now(): int
@@ -305,14 +414,119 @@ function withToken(array $data, string $sessionToken): array
     return $data;
 }
 
+function parseVivistarLine(string $line): ?array
+{
+    $message = trim($line);
+    if (!str_starts_with($message, 'IW') || !str_ends_with($message, '#')) {
+        return null;
+    }
+
+    $body = substr($message, 2, -1);
+    if (preg_match('/^(AP|BP)([A-Z0-9]{2})(?:,(.*))?$/', $body, $m) !== 1) {
+        return null;
+    }
+
+    $prefix = $m[1];
+    $code = $m[2];
+    $csv = $m[3] ?? '';
+    $fields = $csv === '' ? [] : explode(',', $csv);
+
+    $imei = '';
+    if (isset($fields[0]) && preg_match('/^\d{15}$/', $fields[0]) === 1) {
+        $imei = $fields[0];
+    }
+
+    $ident = '';
+    if (isset($fields[1]) && preg_match('/^\d{6,14}$/', $fields[1]) === 1) {
+        $ident = $fields[1];
+    } elseif (isset($fields[0]) && preg_match('/^\d{6,14}$/', $fields[0]) === 1) {
+        $ident = $fields[0];
+    }
+
+    return [
+        'raw' => $message,
+        'prefix' => $prefix,
+        'code' => $code,
+        'type' => $prefix . $code,
+        'ident' => $ident,
+        'imei' => $imei,
+        'data' => [
+            'fields' => $fields,
+            'csv' => $csv,
+        ],
+    ];
+}
+
+function buildVivistarUplink(string $type, mixed $data): string
+{
+    $type = strtoupper(trim($type));
+    if (preg_match('/^AP[A-Z0-9]{2}$/', $type) !== 1) {
+        throw new RuntimeException("Invalid VIVISTAR uplink type: $type");
+    }
+
+    $fields = [];
+
+    if (is_array($data) && isset($data['fields']) && is_array($data['fields'])) {
+        $fields = array_map(static fn ($v): string => (string)$v, $data['fields']);
+    } elseif ($type === 'AP49') {
+        $fields = [(string)($data['heartRate'] ?? 72)];
+    } elseif ($type === 'APHT') {
+        $fields = [
+            (string)($data['heartRate'] ?? 72),
+            (string)($data['systolic'] ?? 130),
+            (string)($data['diastolic'] ?? 85),
+        ];
+    } elseif ($type === 'APHP') {
+        $fields = [
+            (string)($data['heartRate'] ?? 72),
+            (string)($data['systolic'] ?? 130),
+            (string)($data['diastolic'] ?? 85),
+            (string)($data['spo2'] ?? 95),
+            (string)($data['bloodSugar'] ?? 90),
+        ];
+    } elseif ($type === 'AP50') {
+        $fields = [
+            (string)($data['bodyTemperature'] ?? 36.5),
+            (string)($data['batteryLevel'] ?? 80),
+        ];
+    } elseif (is_array($data) && !empty($data)) {
+        foreach ($data as $value) {
+            if (is_scalar($value) || $value === null) {
+                $fields[] = (string)$value;
+            }
+        }
+    }
+
+    return empty($fields)
+        ? "IW{$type}#"
+        : "IW{$type}," . implode(',', $fields) . "#";
+}
+
+function isVivistarDownlinkCommand(array $msg): bool
+{
+    $fields = $msg['data']['fields'] ?? [];
+    if (!is_array($fields) || count($fields) < 2) {
+        return false;
+    }
+
+    $imei = (string)($fields[0] ?? '');
+    $ident = (string)($fields[1] ?? '');
+
+    return preg_match('/^\d{15}$/', $imei) === 1
+        && preg_match('/^\d{6,14}$/', $ident) === 1;
+}
+
 // --- Connect ---
 
 echo "=== Simulator: $model ($imei) ===\n";
 echo "Server: $serverUrl\n";
+echo "Protocol: $protocol\n";
 
 try {
-    $ws = new WsClient($serverUrl);
-    echo "[OK] Connected to WebSocket server.\n";
+    $useNativeVivistarTcp = $protocol === 'vivistar-iw' && str_starts_with($serverUrl, 'tcp://');
+    $ws = $useNativeVivistarTcp ? new TcpTextClient($serverUrl) : new WsClient($serverUrl);
+    $transportLabel = $useNativeVivistarTcp ? 'native TCP server' : 'WebSocket server';
+    echo "[OK] Connected to $transportLabel.\n";
 } catch (Exception $e) {
     echo "[ERROR] " . $e->getMessage() . "\n";
     exit(1);
@@ -329,38 +543,54 @@ $loginData = $profile['login'] ?? [
 $ident = str_pad((string)random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
 $sessionToken = '';
 
-sendPacket($ws, [
-    'type' => 'login',
-    'ident' => $ident,
-    'ref' => 'w:update',
-    'imei' => $imei,
-    'data' => $loginData,
-    'timestamp' => now(),
-]);
+if ($protocol === 'vivistar-iw') {
+    sendProtocolPacket($ws, $protocol, "IWAP00{$imei}#");
+} else {
+    sendProtocolPacket($ws, $protocol, [
+        'type' => 'login',
+        'ident' => $ident,
+        'ref' => 'w:update',
+        'imei' => $imei,
+        'data' => $loginData,
+        'timestamp' => now(),
+    ]);
+}
 
 echo "[login] Waiting for response...\n";
-$response = receivePacket($ws, 5);
+$response = receiveProtocolPacket($ws, $protocol, 5);
 
 if (!$response) {
     echo "[ERROR] No response from server.\n";
     exit(1);
 }
 
-if ($response['type'] === 'login_error') {
-    echo "[ERROR] Login rejected: " . ($response['data']['error'] ?? 'unknown reason') . "\n";
-    exit(1);
-}
+if ($protocol === 'vivistar-iw') {
+    if (($response['type'] ?? '') !== 'BP00') {
+        echo "[ERROR] Login rejected/unexpected response: " . json_encode($response, JSON_UNESCAPED_UNICODE) . "\n";
+        exit(1);
+    }
 
-if ($response['type'] === 'login_ok') {
-    $sessionToken = $response['data']['sessionToken'] ?? '';
-    $capsFromServer = $response['data']['capabilities'] ?? [];
-    echo "[OK] Login accepted. Session: $sessionToken\n";
-    echo "     Capabilities received from server:\n";
-    echo "       Passive: " . count($capsFromServer['passive'] ?? []) . " commands\n";
-    echo "       Active:  " . count($capsFromServer['active'] ?? []) . " commands\n";
+    echo "[OK] Login accepted (VIVISTAR BP00).\n";
+    echo "     Capabilities from local profile:\n";
+    echo "       Passive: " . count($caps->getPassive()) . " commands\n";
+    echo "       Active:  " . count($caps->getActive()) . " commands\n";
 } else {
-    echo "[?] Unexpected response: " . json_encode($response) . "\n";
-    exit(1);
+    if (($response['type'] ?? '') === 'login_error') {
+        echo "[ERROR] Login rejected: " . ($response['data']['error'] ?? 'unknown reason') . "\n";
+        exit(1);
+    }
+
+    if (($response['type'] ?? '') === 'login_ok') {
+        $sessionToken = $response['data']['sessionToken'] ?? '';
+        $capsFromServer = $response['data']['capabilities'] ?? [];
+        echo "[OK] Login accepted. Session: $sessionToken\n";
+        echo "     Capabilities received from server:\n";
+        echo "       Passive: " . count($capsFromServer['passive'] ?? []) . " commands\n";
+        echo "       Active:  " . count($capsFromServer['active'] ?? []) . " commands\n";
+    } else {
+        echo "[?] Unexpected response: " . json_encode($response) . "\n";
+        exit(1);
+    }
 }
 
 // --- Interactive mode ---
@@ -379,23 +609,47 @@ if ($interactive) {
 
     while (true) {
         // Check server messages (non-blocking).
-        $serverMsg = receivePacket($ws, 0);
+        $serverMsg = receiveProtocolPacket($ws, $protocol, 0);
         if ($serverMsg) {
-            $type = $serverMsg['type'] ?? '?';
-            $ref = $serverMsg['ref'] ?? '?';
-            if ($ref === 's:down') {
-                echo "\n[COMMAND] {$serverMsg['type']}: " . json_encode($serverMsg['data'] ?? []) . "\n";
-                sendPacket($ws, [
-                    'type' => $type,
-                    'ident' => $serverMsg['ident'] ?? '',
-                    'ref' => 'w:reply',
-                    'imei' => $imei,
-                    'data' => withToken(['status' => 'ok'], $sessionToken),
-                    'timestamp' => now(),
-                ]);
-                echo "[reply] Response sent.\n> ";
-            } elseif ($ref === 's:reply') {
-                echo "\n[ACK] {$serverMsg['type']} (ident={$serverMsg['ident']})\n> ";
+            if ($protocol === 'vivistar-iw') {
+                $type = $serverMsg['type'] ?? '';
+                if (
+                    preg_match('/^BP([A-Z0-9]{2})$/', $type, $match) === 1
+                    && $type !== 'BP00'
+                    && isVivistarDownlinkCommand($serverMsg)
+                ) {
+                    $fields = $serverMsg['data']['fields'] ?? [];
+                    echo "\n[COMMAND] {$type}: " . json_encode($fields) . "\n";
+                    $replyFields = [];
+                    $identFromDown = $serverMsg['ident'] ?? '';
+                    if ($identFromDown !== '') {
+                        $replyFields[] = $identFromDown;
+                    }
+                    $reply = empty($replyFields)
+                        ? "IWAP{$match[1]}#"
+                        : "IWAP{$match[1]}," . implode(',', $replyFields) . "#";
+                    sendProtocolPacket($ws, $protocol, $reply);
+                    echo "[reply] $reply\n> ";
+                } else {
+                    echo "\n[ACK] {$type}\n> ";
+                }
+            } else {
+                $type = $serverMsg['type'] ?? '?';
+                $ref = $serverMsg['ref'] ?? '?';
+                if ($ref === 's:down') {
+                    echo "\n[COMMAND] {$serverMsg['type']}: " . json_encode($serverMsg['data'] ?? []) . "\n";
+                    sendProtocolPacket($ws, $protocol, [
+                        'type' => $type,
+                        'ident' => $serverMsg['ident'] ?? '',
+                        'ref' => 'w:reply',
+                        'imei' => $imei,
+                        'data' => withToken(['status' => 'ok'], $sessionToken),
+                        'timestamp' => now(),
+                    ]);
+                    echo "[reply] Response sent.\n> ";
+                } elseif ($ref === 's:reply') {
+                    echo "\n[ACK] {$serverMsg['type']} (ident={$serverMsg['ident']})\n> ";
+                }
             }
         }
 
@@ -425,25 +679,40 @@ if ($interactive) {
         }
 
         $cmdIdent = str_pad((string)random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
-        sendPacket($ws, [
-            'type' => $cmdType,
-            'ident' => $cmdIdent,
-            'ref' => 'w:update',
-            'imei' => $imei,
-            'data' => withToken($cmdData, $sessionToken),
-            'timestamp' => now(),
-        ]);
+        if ($protocol === 'vivistar-iw') {
+            $line = buildVivistarUplink($cmdType, $cmdData);
+            sendProtocolPacket($ws, $protocol, $line);
+        } else {
+            sendProtocolPacket($ws, $protocol, [
+                'type' => $cmdType,
+                'ident' => $cmdIdent,
+                'ref' => 'w:update',
+                'imei' => $imei,
+                'data' => withToken($cmdData, $sessionToken),
+                'timestamp' => now(),
+            ]);
+        }
 
         // Wait for confirmation.
         $ack = null;
         $start = time();
         while (!$ack && (time() - $start) < 5) {
-            $ack = receivePacket($ws, 1);
+            $ack = receiveProtocolPacket($ws, $protocol, 1);
             if ($ack) {
-                if (($ack['ident'] ?? '') === $cmdIdent) {
-                    echo "[OK] Confirmed (ident=$cmdIdent)\n";
-                } elseif (($ack['type'] ?? '') === 'error') {
-                    echo "[ERROR] {$ack['data']['message']}\n";
+                if ($protocol === 'vivistar-iw') {
+                    $expectedAck = 'BP' . substr($cmdType, 2);
+                    if (($ack['type'] ?? '') === $expectedAck) {
+                        echo "[OK] Confirmed ({$ack['type']})\n";
+                        break;
+                    }
+                } else {
+                    if (($ack['ident'] ?? '') === $cmdIdent) {
+                        echo "[OK] Confirmed (ident=$cmdIdent)\n";
+                        break;
+                    } elseif (($ack['type'] ?? '') === 'error') {
+                        echo "[ERROR] {$ack['data']['message']}\n";
+                        break;
+                    }
                 }
             }
         }
@@ -475,28 +744,41 @@ if ($command) {
     }
 
     $cmdIdent = str_pad((string)random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
-    sendPacket($ws, [
-        'type' => $command,
-        'ident' => $cmdIdent,
-        'ref' => 'w:update',
-        'imei' => $imei,
-        'data' => withToken($cmdData, $sessionToken),
-        'timestamp' => now(),
-    ]);
+    if ($protocol === 'vivistar-iw') {
+        $line = buildVivistarUplink($command, $cmdData);
+        sendProtocolPacket($ws, $protocol, $line);
+    } else {
+        sendProtocolPacket($ws, $protocol, [
+            'type' => $command,
+            'ident' => $cmdIdent,
+            'ref' => 'w:update',
+            'imei' => $imei,
+            'data' => withToken($cmdData, $sessionToken),
+            'timestamp' => now(),
+        ]);
+    }
 
     echo "[$command] Sent (ident=$cmdIdent). Waiting for confirmation...\n";
 
     $ack = null;
     for ($i = 0; $i < 50; $i++) {
-        $ack = receivePacket($ws, 1);
+        $ack = receiveProtocolPacket($ws, $protocol, 1);
         if ($ack) {
-            if (($ack['ident'] ?? '') === $cmdIdent) {
-                echo "[OK] Confirmed by server.\n";
-                break;
-            }
-            if (($ack['type'] ?? '') === 'error') {
-                echo "[ERROR] {$ack['data']['message']}\n";
-                break;
+            if ($protocol === 'vivistar-iw') {
+                $expectedAck = 'BP' . substr($command, 2);
+                if (($ack['type'] ?? '') === $expectedAck) {
+                    echo "[OK] Confirmed by server ({$ack['type']}).\n";
+                    break;
+                }
+            } else {
+                if (($ack['ident'] ?? '') === $cmdIdent) {
+                    echo "[OK] Confirmed by server.\n";
+                    break;
+                }
+                if (($ack['type'] ?? '') === 'error') {
+                    echo "[ERROR] {$ack['data']['message']}\n";
+                    break;
+                }
             }
         }
     }
@@ -516,24 +798,51 @@ if ($listen) {
     echo "Waiting for server commands... (Ctrl+C to exit)\n\n";
 
     while (true) {
-        $msg = receivePacket($ws, 5);
+        $msg = receiveProtocolPacket($ws, $protocol, 5);
         if ($msg) {
-            $ref = $msg['ref'] ?? '';
-            if ($ref === 's:down') {
-                echo "[COMMAND] {$msg['type']}\n";
-                echo "  Data: " . json_encode($msg['data'] ?? []) . "\n";
+            if ($protocol === 'vivistar-iw') {
+                $type = $msg['type'] ?? '';
+                if (
+                    preg_match('/^BP([A-Z0-9]{2})$/', $type, $match) === 1
+                    && $type !== 'BP00'
+                    && isVivistarDownlinkCommand($msg)
+                ) {
+                    $fields = $msg['data']['fields'] ?? [];
+                    echo "[COMMAND] {$type}\n";
+                    echo "  Data: " . json_encode($fields) . "\n";
 
-                sendPacket($ws, [
-                    'type' => $msg['type'],
-                    'ident' => $msg['ident'] ?? '',
-                    'ref' => 'w:reply',
-                    'imei' => $imei,
-                    'data' => withToken(['status' => 'ok', 'received' => true], $sessionToken),
-                    'timestamp' => now(),
-                ]);
-                echo "[reply] Response sent.\n";
-            } elseif ($ref === 's:reply') {
-                echo "[ACK] {$msg['type']}\n";
+                    $replyFields = [];
+                    $identFromDown = $msg['ident'] ?? '';
+                    if ($identFromDown !== '') {
+                        $replyFields[] = $identFromDown;
+                    }
+
+                    $reply = empty($replyFields)
+                        ? "IWAP{$match[1]}#"
+                        : "IWAP{$match[1]}," . implode(',', $replyFields) . "#";
+                    sendProtocolPacket($ws, $protocol, $reply);
+                    echo "[reply] {$reply}\n";
+                } else {
+                    echo "[ACK] {$type}\n";
+                }
+            } else {
+                $ref = $msg['ref'] ?? '';
+                if ($ref === 's:down') {
+                    echo "[COMMAND] {$msg['type']}\n";
+                    echo "  Data: " . json_encode($msg['data'] ?? []) . "\n";
+
+                    sendProtocolPacket($ws, $protocol, [
+                        'type' => $msg['type'],
+                        'ident' => $msg['ident'] ?? '',
+                        'ref' => 'w:reply',
+                        'imei' => $imei,
+                        'data' => withToken(['status' => 'ok', 'received' => true], $sessionToken),
+                        'timestamp' => now(),
+                    ]);
+                    echo "[reply] Response sent.\n";
+                } elseif ($ref === 's:reply') {
+                    echo "[ACK] {$msg['type']}\n";
+                }
             }
         } else {
             echo ".";
