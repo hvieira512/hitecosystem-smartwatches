@@ -9,6 +9,8 @@ use App\Registry\DeviceCapabilities;
 use App\Repository\EventRepository;
 use App\Log\Logger;
 use App\Redis\Client as RedisClient;
+use App\Protocol\AdapterRegistry;
+use App\Protocol\Adapter\DeviceAdapterInterface;
 
 class WatchServer implements MessageComponentInterface
 {
@@ -21,6 +23,7 @@ class WatchServer implements MessageComponentInterface
     private Whitelist $whitelist;
     private ?EventRepository $eventsRepo;
     private ?RedisClient $redis;
+    private AdapterRegistry $adapters;
 
     public function __construct(?\PDO $pdo = null, ?RedisClient $redis = null)
     {
@@ -33,6 +36,7 @@ class WatchServer implements MessageComponentInterface
         $this->eventHistory = [];
         $this->nextEventId = 1;
         $this->whitelist = new Whitelist(pdo: $pdo);
+        $this->adapters = new AdapterRegistry();
 
         if ($this->eventsRepo) {
             $this->loadDeviceDataFromDatabase();
@@ -57,6 +61,10 @@ class WatchServer implements MessageComponentInterface
             'model' => null,
             'caps' => null,
             'sessionToken' => null,
+            'protocol' => null,
+            'adapter' => null,
+            'lastCommandType' => null,
+            'lastCommandIdent' => null,
         ];
         Logger::channel('watch')->info("New connection: {$conn->resourceId}");
     }
@@ -68,25 +76,39 @@ class WatchServer implements MessageComponentInterface
 
     public function onMessage(ConnectionInterface $from, $msg): void
     {
-        $header = unpack("nstart/nlength", substr($msg, 0, 4));
-        if ($header['start'] !== 0xFCAF) {
-            Logger::channel('watch')->warning('Invalid packet (start field)');
-            return;
+        $rid = $from->resourceId;
+        $session = $this->sessions[$rid] ?? [];
+        $raw = (string)$msg;
+
+        $payload = null;
+        $adapter = $session['adapter'] ?? null;
+        if ($adapter instanceof DeviceAdapterInterface) {
+            $payload = $adapter->decodeIncoming($raw, ['session' => $session]);
+            if ($payload !== null) {
+                $payload['_protocol'] = $session['protocol'] ?? $adapter->protocol();
+            }
         }
 
-        $payload = json_decode(substr($msg, 4, $header['length']), true);
+        if ($payload === null) {
+            $payload = $this->adapters->decodeAny($raw, ['session' => $session]);
+        }
+
         if (!$payload || !isset($payload['type'])) {
-            Logger::channel('watch')->warning('Invalid JSON');
+            Logger::channel('watch')->warning('Invalid packet (unrecognized protocol payload)');
             return;
         }
 
         $type = $payload['type'];
-        $rid = $from->resourceId;
+        $detectedProtocol = $payload['_protocol'] ?? null;
+        if ($detectedProtocol !== null && ($this->sessions[$rid]['protocol'] ?? null) === null) {
+            $this->sessions[$rid]['protocol'] = $detectedProtocol;
+            $this->sessions[$rid]['adapter'] = $this->adapters->get($detectedProtocol);
+        }
 
         // Unauthenticated: only accepts "login".
         if (!($this->sessions[$rid]['authenticated'] ?? false)) {
             if ($type === 'login') {
-                $this->handleLogin($from, $payload);
+                $this->handleLogin($from, $payload, $detectedProtocol);
             } elseif (in_array($type, ['login_error', 'login_ok'], true)) {
                 return;
             } else {
@@ -108,16 +130,19 @@ class WatchServer implements MessageComponentInterface
             return;
         }
 
-        $sentToken = $payload['data']['sessionToken'] ?? '';
-        if ($sentToken !== $session['sessionToken']) {
-            Logger::channel('watch')->warning("Invalid token for IMEI=$imei (expected={$session['sessionToken']}, received=$sentToken)");
-            $this->sendError($from, $payload, 'invalid_session_token',
-                'Invalid session token');
-            return;
+        if (($session['protocol'] ?? '') === 'wonlex-json') {
+            $sentToken = $payload['data']['sessionToken'] ?? '';
+            if ($sentToken !== $session['sessionToken']) {
+                Logger::channel('watch')->warning("Invalid token for IMEI=$imei (expected={$session['sessionToken']}, received=$sentToken)");
+                $this->sendError($from, $payload, 'invalid_session_token',
+                    'Invalid session token');
+                return;
+            }
         }
 
         $ref = $payload['ref'] ?? '';
-        $isReplyToServerCommand = $ref === 'w:reply';
+        $isReplyToServerCommand = $ref === 'w:reply'
+            || $this->isVivistarCommandReply($session, $payload);
         $isPassiveUpdate = !$isReplyToServerCommand;
 
         if ($isPassiveUpdate && !$caps->supportsPassive($type)) {
@@ -139,8 +164,12 @@ class WatchServer implements MessageComponentInterface
 
         // If it is a reply to one of our commands (w:reply), always accept it.
         if ($isReplyToServerCommand) {
+            if (($session['protocol'] ?? '') === 'vivistar-iw') {
+                $this->sessions[$rid]['lastCommandType'] = null;
+                $this->sessions[$rid]['lastCommandIdent'] = null;
+            }
             Logger::channel('watch')->info("reply IMEI=$imei, type=$type");
-            $this->sendJson($from, $this->buildReply($payload, $payload['data'] ?? []));
+            $this->sendPayload($from, $this->buildReply($payload, $payload['data'] ?? []));
             return;
         }
 
@@ -148,8 +177,10 @@ class WatchServer implements MessageComponentInterface
         $this->routeCommand($from, $payload);
     }
 
-    private function handleLogin(ConnectionInterface $conn, array $payload): void
+    private function handleLogin(ConnectionInterface $conn, array $payload, ?string $detectedProtocol = null): void
     {
+        $rid = $conn->resourceId;
+        $protocol = $detectedProtocol ?? ($this->sessions[$rid]['protocol'] ?? null);
         $imei = $payload['imei'] ?? '';
         $data = $payload['data'] ?? [];
         $model = $data['deviceModel'] ?? '';
@@ -163,7 +194,11 @@ class WatchServer implements MessageComponentInterface
 
         // 2. Check expected model.
         $expectedModel = $this->whitelist->getModel($imei);
-        if ($expectedModel && $expectedModel !== $model) {
+        if ($model === '' && $expectedModel) {
+            $model = $expectedModel;
+        }
+
+        if ($expectedModel && $model !== '' && $expectedModel !== $model) {
             $this->sendLoginError($conn, $ident, $imei,
                 "Model mismatch: expected $expectedModel, got $model");
             return;
@@ -177,14 +212,32 @@ class WatchServer implements MessageComponentInterface
             return;
         }
 
+        $modelAdapter = $this->adapters->resolveForModel($model);
+        if ($modelAdapter === null) {
+            $this->sendLoginError($conn, $ident, $imei,
+                "No protocol adapter configured for model: $model");
+            return;
+        }
+
+        if ($protocol !== null && $modelAdapter->protocol() !== $protocol) {
+            $this->sendLoginError(
+                $conn,
+                $ident,
+                $imei,
+                "Protocol mismatch: expected {$modelAdapter->protocol()}, got $protocol"
+            );
+            return;
+        }
+
         // 4. Accept login.
-        $rid = $conn->resourceId;
         $sessionToken = bin2hex(random_bytes(8));
         $this->sessions[$rid]['authenticated'] = true;
         $this->sessions[$rid]['imei'] = $imei;
         $this->sessions[$rid]['model'] = $model;
         $this->sessions[$rid]['caps'] = $caps;
         $this->sessions[$rid]['sessionToken'] = $sessionToken;
+        $this->sessions[$rid]['protocol'] = $modelAdapter->protocol();
+        $this->sessions[$rid]['adapter'] = $modelAdapter;
 
         $previousConn = $this->deviceMap[$imei] ?? null;
         $this->deviceMap[$imei] = $conn;
@@ -193,7 +246,7 @@ class WatchServer implements MessageComponentInterface
             $this->redis->deviceSetOnline($imei);
         }
 
-        $this->sendJson($conn, [
+        $this->sendPayload($conn, [
             'type' => 'login_ok',
             'ident' => $ident,
             'ref' => 's:reply',
@@ -215,7 +268,7 @@ class WatchServer implements MessageComponentInterface
 
     private function sendLoginError(ConnectionInterface $conn, string $ident, string $imei, string $msg): void
     {
-        $this->sendJson($conn, [
+        $this->sendPayload($conn, [
             'type' => 'login_error',
             'ident' => $ident,
             'ref' => 's:reply',
@@ -233,7 +286,7 @@ class WatchServer implements MessageComponentInterface
 
         Logger::channel('watch')->info("data IMEI=$imei, type=$type");
 
-        $this->sendJson($conn, $this->buildReply($payload));
+        $this->sendPayload($conn, $this->buildReply($payload));
     }
 
     public function sendCommand(string $imei, string $type, array $data = []): bool
@@ -260,7 +313,7 @@ class WatchServer implements MessageComponentInterface
         }
 
         $ident = str_pad((string)random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
-        $this->sendJson($conn, [
+        $this->sendPayload($conn, [
             'type' => $type,
             'ident' => $ident,
             'ref' => 's:down',
@@ -270,6 +323,8 @@ class WatchServer implements MessageComponentInterface
         ]);
 
         Logger::channel('watch')->info("cmd IMEI=$imei, type=$type, ident=$ident");
+        $this->sessions[$conn->resourceId]['lastCommandType'] = $type;
+        $this->sessions[$conn->resourceId]['lastCommandIdent'] = $ident;
         return true;
     }
 
@@ -324,15 +379,27 @@ class WatchServer implements MessageComponentInterface
 
     // --- Helpers ---
 
-    private function sendJson(ConnectionInterface $client, array $data): void
+    private function sendPayload(ConnectionInterface $client, array $data): void
     {
-        $json = json_encode($data, JSON_UNESCAPED_UNICODE);
-        $client->send(pack("nn", 0xFCAF, strlen($json)) . $json);
+        $rid = $client->resourceId;
+        $session = $this->sessions[$rid] ?? [];
+        $adapter = $session['adapter'] ?? null;
+
+        if (!$adapter instanceof DeviceAdapterInterface) {
+            $protocol = $session['protocol'] ?? 'wonlex-json';
+            $adapter = $this->adapters->get($protocol) ?? $this->adapters->get('wonlex-json');
+        }
+
+        if (!$adapter instanceof DeviceAdapterInterface) {
+            return;
+        }
+
+        $client->send($adapter->encodeOutgoing($data, ['session' => $session]));
     }
 
     private function sendError(ConnectionInterface $conn, array $original, string $error, string $msg = ''): void
     {
-        $this->sendJson($conn, [
+        $this->sendPayload($conn, [
             'type' => 'error',
             'ident' => $original['ident'] ?? '',
             'ref' => 's:reply',
@@ -344,6 +411,36 @@ class WatchServer implements MessageComponentInterface
             ],
             'timestamp' => $this->now(),
         ]);
+    }
+
+    private function isVivistarCommandReply(array $session, array $payload): bool
+    {
+        if (($session['protocol'] ?? '') !== 'vivistar-iw') {
+            return false;
+        }
+
+        $lastType = $session['lastCommandType'] ?? '';
+        $lastIdent = $session['lastCommandIdent'] ?? '';
+        $incomingType = $payload['type'] ?? '';
+        $incomingIdent = $payload['ident'] ?? '';
+
+        if ($lastType === '' || $lastIdent === '' || $incomingType === '' || $incomingIdent === '') {
+            return false;
+        }
+
+        if ($incomingIdent !== $lastIdent) {
+            return false;
+        }
+
+        if (preg_match('/^BP([A-Z0-9]{2})$/', $lastType, $downMatch) !== 1) {
+            return false;
+        }
+
+        if (preg_match('/^AP([A-Z0-9]{2})$/', $incomingType, $upMatch) !== 1) {
+            return false;
+        }
+
+        return $downMatch[1] === $upMatch[1];
     }
 
     private function buildReply(array $payload, ?array $extraData = null): array
