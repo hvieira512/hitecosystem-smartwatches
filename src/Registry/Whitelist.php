@@ -204,7 +204,6 @@ class Whitelist
 
         $pdo = (function () {
             $ref = new \ReflectionProperty($this->deviceRepo, 'pdo');
-            $ref->setAccessible(true);
             return $ref->getValue($this->deviceRepo);
         })();
 

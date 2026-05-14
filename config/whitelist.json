@@ -1,12 +1,10 @@
 {
   "865028000000306": {
     "model": "WONLEX-PRO",
-    "client_id": 1
+    "client_id": 3,
+    "enabled": true
   },
-  "865028000000307": {
-    "model": "WONLEX-HEALTH",
-    "client_id": 1
-  },
+  "865028000000307": "WONLEX-HEALTH",
   "865028000000308": "VIVISTAR-CARE",
   "865028000000309": "VIVISTAR-LITE"
 }

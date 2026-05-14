@@ -324,7 +324,7 @@ class ApiServer
         if ($method === 'OPTIONS') {
             return new Response(204, [
                 'Access-Control-Allow-Origin' => '*',
-                'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS',
                 'Access-Control-Allow-Headers' => 'Content-Type',
                 'Access-Control-Max-Age' => '86400',
             ]);
