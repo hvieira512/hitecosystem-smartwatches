@@ -18,6 +18,10 @@ class Config
                 'host' => getenv('WS_HOST') ?: '0.0.0.0',
                 'port' => (int)(getenv('WS_PORT') ?: 8080),
             ],
+            'vivistar_tcp' => [
+                'host' => getenv('VIVISTAR_TCP_HOST') ?: '0.0.0.0',
+                'port' => (int)(getenv('VIVISTAR_TCP_PORT') ?: 9000),
+            ],
             'api' => [
                 'host' => getenv('API_HOST') ?: '0.0.0.0',
                 'port' => (int)(getenv('API_PORT') ?: 8081),

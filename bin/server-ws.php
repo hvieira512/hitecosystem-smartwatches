@@ -12,11 +12,14 @@ use App\WebSocket\WatchServer;
 use App\Database\Database;
 use App\Log\Logger;
 use App\Redis\Client as RedisClient;
+use App\Tcp\VivistarTcpIngress;
 
 $config = \App\Config::load()->all();
 
 $wsPort = $config['websocket']['port'] ?? 8080;
 $wsHost = $config['websocket']['host'] ?? '0.0.0.0';
+$vivistarTcpPort = $config['vivistar_tcp']['port'] ?? 9000;
+$vivistarTcpHost = $config['vivistar_tcp']['host'] ?? '0.0.0.0';
 
 // --- MySQL ---
 
@@ -51,6 +54,14 @@ $wsApp = new HttpServer(
 );
 $wsSocket = new Reactor("$wsHost:$wsPort", $loop);
 $wsServer = new IoServer($wsApp, $wsSocket, $loop);
+
+// Native Vivistar ingress on raw TCP (IW...#)
+$vivistarTcpServer = new VivistarTcpIngress(
+    watchServer: $watchServer,
+    loop: $loop,
+    host: $vivistarTcpHost,
+    port: $vivistarTcpPort,
+);
 
 // --- Redis Command Stream Consumer ---
 // Receives commands from the API process via Redis Stream and sends them to devices.
@@ -90,7 +101,8 @@ if ($redis !== null && $redis->isAvailable()) {
     Logger::channel('ws-cmd')->info('Active: Redis Stream -> WebSocket commands');
 }
 
-Logger::channel('app')->info("=== WebSocket Server (separate) ===");
+Logger::channel('app')->info("=== Device Ingress Server (separate) ===");
 Logger::channel('app')->info("ws://$wsHost:$wsPort");
+Logger::channel('app')->info("tcp://$vivistarTcpHost:$vivistarTcpPort (Vivistar)");
 
 $loop->run();

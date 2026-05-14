@@ -12,11 +12,14 @@ use App\Http\ApiServer;
 use App\Database\Database;
 use App\Log\Logger;
 use App\Redis\Client as RedisClient;
+use App\Tcp\VivistarTcpIngress;
 
 $config = \App\Config::load()->all();
 
 $wsPort = $config['websocket']['port'] ?? 8080;
 $wsHost = $config['websocket']['host'] ?? '0.0.0.0';
+$vivistarTcpPort = $config['vivistar_tcp']['port'] ?? 9000;
+$vivistarTcpHost = $config['vivistar_tcp']['host'] ?? '0.0.0.0';
 $apiPort = $config['api']['port'] ?? 8081;
 $apiHost = $config['api']['host'] ?? '0.0.0.0';
 $caps = json_decode(file_get_contents(__DIR__ . '/config/capabilities.json'), true) ?? [];
@@ -55,6 +58,14 @@ $wsApp = new HttpServer(
 $wsSocket = new Reactor("$wsHost:$wsPort", $loop);
 $wsServer = new IoServer($wsApp, $wsSocket, $loop);
 
+// Native Vivistar ingress on raw TCP (IW...#)
+$vivistarTcpServer = new VivistarTcpIngress(
+    watchServer: $watchServer,
+    loop: $loop,
+    host: $vivistarTcpHost,
+    port: $vivistarTcpPort,
+);
+
 $apiServer = new ApiServer($watchServer, $loop, $apiPort, $apiHost);
 
 // Note: Redis Stream -> MySQL event persistence is handled by the dedicated worker
@@ -62,6 +73,7 @@ $apiServer = new ApiServer($watchServer, $loop, $apiPort, $apiHost);
 
 Logger::channel('app')->info("=== Multi-Vendor 4G Smartwatch Server ===");
 Logger::channel('app')->info("WebSocket: ws://$wsHost:$wsPort");
+Logger::channel('app')->info("Vivistar TCP: tcp://$vivistarTcpHost:$vivistarTcpPort");
 Logger::channel('app')->info("HTTP API:  http://$apiHost:$apiPort");
 Logger::channel('app')->info("Models:    " . implode(', ', array_keys($caps)));
 
