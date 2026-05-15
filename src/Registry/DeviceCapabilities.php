@@ -2,31 +2,99 @@
 
 namespace App\Registry;
 
+use App\Log\Logger;
+use App\Repository\ModelRepository;
+
 class DeviceCapabilities
 {
     private static ?array $profiles = null;
     private static ?string $profilesPath = null;
+    private static ?\PDO $pdo = null;
+    private static int $cacheTtlSeconds = 5;
+    private static int $lastLoadedAt = 0;
 
     public static function setProfilesPath(string $path): void
     {
         self::$profiles = null;
+        self::$lastLoadedAt = 0;
         self::$profilesPath = $path;
+    }
+
+    public static function setDatabasePdo(?\PDO $pdo): void
+    {
+        self::$pdo = $pdo;
+        self::$profiles = null;
+        self::$lastLoadedAt = 0;
+    }
+
+    public static function setCacheTtl(int $seconds): void
+    {
+        self::$cacheTtlSeconds = max(1, $seconds);
     }
 
     private static function load(): void
     {
-        if (self::$profiles !== null) {
+        $now = time();
+        if (self::$profiles !== null && ($now - self::$lastLoadedAt) < self::$cacheTtlSeconds) {
             return;
         }
 
+        $profiles = self::loadFromDatabase();
+        if ($profiles === null || $profiles === []) {
+            if ($profiles === []) {
+                Logger::channel('capabilities')->warning('Model catalog in MySQL is empty; falling back to capabilities.json');
+            }
+            $profiles = self::loadFromJson();
+        }
+
+        self::$profiles = $profiles;
+        self::$lastLoadedAt = $now;
+    }
+
+    private static function loadFromDatabase(): ?array
+    {
+        if (self::$pdo === null) {
+            return null;
+        }
+
+        try {
+            $repo = new ModelRepository(self::$pdo);
+            $rows = $repo->allProfiles();
+            $profiles = [];
+            foreach ($rows as $row) {
+                $profiles[$row['code']] = [
+                    'name' => $row['name'],
+                    'supplier' => $row['supplier_name'],
+                    'protocol' => $row['protocol'],
+                    'transport' => $row['transport'],
+                    'source_doc' => $row['source_doc'],
+                    'enabled' => (bool)$row['enabled'],
+                    'passive' => $row['passive'],
+                    'active' => $row['active'],
+                    'features' => $row['features'],
+                ];
+            }
+            return $profiles;
+        } catch (\Throwable $e) {
+            Logger::channel('capabilities')->warning('Failed to load capabilities from MySQL: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    private static function loadFromJson(): array
+    {
         $path = self::$profilesPath ?? __DIR__ . '/../../config/capabilities.json';
 
         if (!file_exists($path)) {
-            self::$profiles = [];
-            return;
+            return [];
         }
 
-        self::$profiles = json_decode(file_get_contents($path), true) ?? [];
+        $decoded = json_decode(file_get_contents($path), true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return $decoded;
     }
 
     public static function forModel(string $model): ?self
@@ -84,7 +152,7 @@ class DeviceCapabilities
         return array_values(array_unique($all));
     }
 
-    // --- Instancia ---
+    // --- Instance ---
 
     private string $model;
     private string $name;
@@ -92,6 +160,7 @@ class DeviceCapabilities
     private ?string $protocol;
     private ?string $transport;
     private ?string $sourceDoc;
+    private bool $enabled;
     private array $passive;
     private array $active;
     private array $features;
@@ -104,6 +173,7 @@ class DeviceCapabilities
         $this->protocol = $profile['protocol'] ?? null;
         $this->transport = $profile['transport'] ?? null;
         $this->sourceDoc = $profile['source_doc'] ?? null;
+        $this->enabled = (bool)($profile['enabled'] ?? true);
         $this->passive = $profile['passive'] ?? [];
         $this->active = $profile['active'] ?? [];
         $this->features = $profile['features'] ?? [];
@@ -137,6 +207,11 @@ class DeviceCapabilities
     public function getSourceDoc(): ?string
     {
         return $this->sourceDoc;
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
     }
 
     public function supportsPassive(string $type): bool
@@ -209,6 +284,7 @@ class DeviceCapabilities
             'protocol' => $this->protocol,
             'transport' => $this->transport,
             'source_doc' => $this->sourceDoc,
+            'enabled' => $this->enabled,
             'passive' => $this->passive,
             'active'  => $this->active,
             'features' => $this->features,

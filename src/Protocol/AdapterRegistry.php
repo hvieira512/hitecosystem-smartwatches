@@ -66,4 +66,9 @@ class AdapterRegistry
     {
         return $this->adapters[$protocol] ?? null;
     }
+
+    public function protocols(): array
+    {
+        return array_keys($this->adapters);
+    }
 }

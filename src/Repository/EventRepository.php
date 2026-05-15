@@ -5,8 +5,8 @@ namespace App\Repository;
 class EventRepository
 {
     private \PDO $pdo;
-    private const COLUMNS = 'e.id, e.imei, d.model, e.native_type, e.feature, e.native_payload, e.received_at, e.created_at';
-    private const FROM_WITH_DEVICE = 'device_events e LEFT JOIN devices d ON d.imei = e.imei';
+    private const COLUMNS = 'e.id, e.imei, m.code AS model, e.native_type, e.feature, e.native_payload, e.received_at, e.created_at';
+    private const FROM_WITH_DEVICE = 'device_events e LEFT JOIN devices d ON d.imei = e.imei LEFT JOIN models m ON m.id = d.model_id';
 
     public function __construct(\PDO $pdo)
     {
@@ -45,7 +45,7 @@ class EventRepository
         }
 
         $sql = 'SELECT ' . self::COLUMNS . ' FROM ' . self::FROM_WITH_DEVICE;
-        if (!empty($where)) {
+        if ($where !== []) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
         $sql .= ' ORDER BY received_at DESC LIMIT :limit';
@@ -72,7 +72,9 @@ class EventRepository
         );
         $stmt->execute([$imei]);
         $row = $stmt->fetch();
-        if (!$row) return null;
+        if (!$row) {
+            return null;
+        }
 
         return [
             'id' => (int)$row['id'],
@@ -99,12 +101,13 @@ class EventRepository
     public function latestForAllImeis(): array
     {
         $stmt = $this->pdo->query(
-            "SELECT " . self::COLUMNS . " FROM " . self::FROM_WITH_DEVICE . "
+            'SELECT ' . self::COLUMNS . ' FROM ' . self::FROM_WITH_DEVICE . '
              INNER JOIN (
                  SELECT imei, MAX(received_at) AS max_ts
                  FROM device_events GROUP BY imei
-             ) latest ON e.imei = latest.imei AND e.received_at = latest.max_ts"
+             ) latest ON e.imei = latest.imei AND e.received_at = latest.max_ts'
         );
+
         $rows = $stmt->fetchAll();
         $result = [];
         foreach ($rows as $row) {
@@ -118,6 +121,7 @@ class EventRepository
                 'receivedAt' => (int)$row['received_at'],
             ];
         }
+
         return $result;
     }
 
@@ -133,9 +137,7 @@ class EventRepository
 
             if ($total > $keepPerDevice) {
                 $deleteCount = $total - $keepPerDevice;
-                $stmt = $this->pdo->prepare(
-                    'DELETE FROM device_events WHERE imei = ? ORDER BY received_at ASC LIMIT ?'
-                );
+                $stmt = $this->pdo->prepare('DELETE FROM device_events WHERE imei = ? ORDER BY received_at ASC LIMIT ?');
                 $stmt->execute([$imei, $deleteCount]);
                 $purged += $stmt->rowCount();
             }

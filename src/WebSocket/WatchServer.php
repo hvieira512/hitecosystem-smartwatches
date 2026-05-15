@@ -27,6 +27,8 @@ class WatchServer implements MessageComponentInterface
 
     public function __construct(?\PDO $pdo = null, ?RedisClient $redis = null)
     {
+        DeviceCapabilities::setDatabasePdo($pdo);
+        DeviceCapabilities::setCacheTtl((int)(getenv('MODEL_CACHE_TTL_SECONDS') ?: 5));
         $this->eventsRepo = $pdo ? new EventRepository($pdo) : null;
         $this->redis = $redis;
         $this->connections = new \SplObjectStorage();

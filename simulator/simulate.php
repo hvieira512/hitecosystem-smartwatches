@@ -13,9 +13,23 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use App\Config;
+use App\Database\Database;
 use App\Registry\DeviceCapabilities;
 
 // --- Argument parsing ---
+
+$config = Config::load()->all();
+$dbConfig = $config['database'] ?? null;
+if ($dbConfig && ($dbConfig['host'] ?? '') !== '' && ($dbConfig['name'] ?? '') !== '') {
+    try {
+        $db = Database::connect($dbConfig);
+        DeviceCapabilities::setDatabasePdo($db->pdo());
+    } catch (\Throwable) {
+        // Fallback to JSON profiles when DB is unavailable.
+    }
+}
+DeviceCapabilities::setCacheTtl((int)(getenv('MODEL_CACHE_TTL_SECONDS') ?: 5));
 
 $args = parseArgs($argv);
 $command = $args['command'] ?? null;

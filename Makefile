@@ -26,9 +26,6 @@ nginx-shell:
 migrate:
 	docker compose exec ws php bin/migrate.php --seed 2>/dev/null || docker compose exec api php bin/migrate.php --seed
 
-seed-clients:
-	docker compose exec ws php bin/migrate.php --seed-clients 2>/dev/null || docker compose exec api php bin/migrate.php --seed-clients
-
 simulate:
 	docker compose exec ws php simulator/simulate.php $(ARGS)
 

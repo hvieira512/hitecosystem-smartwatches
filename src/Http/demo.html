@@ -175,13 +175,66 @@
             return state.devices.find((item) => item.device.imei === state.selectedImei)?.device || null;
         }
 
+        function normalizeDeviceItem(item) {
+            return item && item.device ? item : { device: item };
+        }
+
+        function deviceModelId(device) {
+            return typeof device?.model === 'string' ? device.model : (device?.model?.id || '');
+        }
+
+        function deviceProtocol(device) {
+            return device?.protocol || device?.model?.protocol || '';
+        }
+
+        function deviceEnabled(device) {
+            if (typeof device?.enabled === 'boolean') return device.enabled;
+            return !!device?.status?.enabled;
+        }
+
+        function deviceOnline(device) {
+            if (typeof device?.online === 'boolean') return device.online;
+            return !!device?.status?.online;
+        }
+
         function selectedListener() {
             return state.selectedImei ? state.listeners[state.selectedImei] || null : null;
         }
 
+        function normalizeFeaturesPayload(features) {
+            const normalized = {};
+
+            if (Array.isArray(features)) {
+                features.forEach((feature) => {
+                    const name = String(feature?.name || '').trim();
+                    if (!name) return;
+                    normalized[name] = {
+                        passiveTypes: Array.isArray(feature?.passive) ? feature.passive : [],
+                        activeTypes: Array.isArray(feature?.active) ? feature.active : [],
+                    };
+                });
+                return normalized;
+            }
+
+            if (features && typeof features === 'object') {
+                Object.entries(features).forEach(([name, mapping]) => {
+                    normalized[name] = {
+                        passiveTypes: Array.isArray(mapping?.passiveTypes)
+                            ? mapping.passiveTypes
+                            : (Array.isArray(mapping?.passive) ? mapping.passive : []),
+                        activeTypes: Array.isArray(mapping?.activeTypes)
+                            ? mapping.activeTypes
+                            : (Array.isArray(mapping?.active) ? mapping.active : []),
+                    };
+                });
+            }
+
+            return normalized;
+        }
+
         async function loadDevices() {
             const payload = await api('/devices');
-            state.devices = payload.data || [];
+            state.devices = (payload.data || []).map(normalizeDeviceItem);
             if (!state.selectedImei && state.devices.length) {
                 state.selectedImei = state.devices[0].device.imei;
             }
@@ -201,7 +254,7 @@
 
             try {
                 const payload = await api(`/devices/${device.imei}/features`);
-                state.features = payload.features || {};
+                state.features = normalizeFeaturesPayload(payload.features);
                 state.nativeCommands = payload.nativeCommands || { passive: [], active: [] };
             } catch (error) {
                 state.features = {};
@@ -249,10 +302,10 @@
         function renderDevices() {
             $('devices').innerHTML = state.devices.map(({ device }) => {
                 const active = device.imei === state.selectedImei ? ' active' : '';
-                const statusClass = !device.status.enabled
+                const statusClass = !deviceEnabled(device)
                     ? 'text-bg-secondary'
-                    : (device.status.online ? 'text-bg-success' : 'text-bg-light border');
-                const statusText = !device.status.enabled ? 'disabled' : (device.status.online ? 'online' : 'offline');
+                    : (deviceOnline(device) ? 'text-bg-success' : 'text-bg-light border');
+                const statusText = !deviceEnabled(device) ? 'disabled' : (deviceOnline(device) ? 'online' : 'offline');
                 return `
                     <button class="device-button btn btn-light text-start border p-3${active}" type="button" data-imei="${escapeHtml(device.imei)}">
                         <div class="d-flex align-items-start justify-content-between gap-2">
@@ -260,8 +313,8 @@
                             <span class="badge ${statusClass}">${statusText}</span>
                         </div>
                         <div class="small text-secondary mt-2">
-                            ${escapeHtml(device.model.id)}<br>
-                            ${escapeHtml(device.model.protocol || '')}
+                            ${escapeHtml(deviceModelId(device))}<br>
+                            ${escapeHtml(deviceProtocol(device))}
                         </div>
                     </button>
                 `;
@@ -279,7 +332,7 @@
         function renderActions() {
             const device = selectedDevice();
             const listener = selectedListener();
-            const isOnline = !!device?.status?.online;
+            const isOnline = !!deviceOnline(device);
             const activeFeatures = activeFeatureOrder
                 .filter((feature) => (state.features[feature]?.activeTypes || []).length > 0);
             const nativeCommands = unique([
@@ -287,7 +340,7 @@
                 ...Object.values(state.features).flatMap((feature) => feature.activeTypes || []),
             ]);
 
-            $('selectedBadge').textContent = device ? device.model.id : 'no selection';
+            $('selectedBadge').textContent = device ? deviceModelId(device) : 'no selection';
 
             $('features').innerHTML = Object.keys(state.features).map((feature) => (
                 `<span class="feature-chip badge rounded-pill text-bg-light border">${escapeHtml(featureLabel(feature))}</span>`
@@ -301,7 +354,7 @@
             $('passiveActions').innerHTML = passiveFeatures.map(([feature, title]) => {
                 const passiveTypes = state.features[feature]?.passiveTypes || [];
                 const nativeType = passiveTypes[0] || '';
-                const disabled = !device || !nativeType || !device.status.enabled;
+                const disabled = !device || !nativeType || !deviceEnabled(device);
                 return `
                     <div class="col-12 col-sm-6">
                         <button class="btn btn-outline-primary w-100" type="button" data-type="${escapeHtml(nativeType)}" ${disabled ? 'disabled' : ''}>
@@ -319,7 +372,7 @@
                 ? `Managed demo watch is running (pid ${listener.pid}). Active commands can be sent while the device is online.`
                 : 'Start a demo watch to keep the simulator connected, then send active commands from the server.';
 
-            $('startListener').disabled = !device || !device.status.enabled || !!listener || isOnline;
+            $('startListener').disabled = !device || !deviceEnabled(device) || !!listener || isOnline;
             $('stopListener').disabled = !listener;
 
             $('activeActions').innerHTML = activeFeatures.map((feature) => {
@@ -385,7 +438,7 @@
                             <span class="badge ${isNew ? 'text-bg-primary' : 'text-bg-light border'}">${escapeHtml(isNew ? 'new' : (event.nativeType || ''))}</span>
                         </div>
                         <div class="small text-secondary mb-2">
-                            ${escapeHtml(device.imei)} · ${escapeHtml(device.model?.id || '')}<br>
+                            ${escapeHtml(device.imei)} · ${escapeHtml(deviceModelId(device))}<br>
                             ${new Date(event.receivedAt).toLocaleTimeString()}
                         </div>
                         <pre class="border rounded bg-body-tertiary p-2">${escapeHtml(normalized)}</pre>
@@ -400,7 +453,7 @@
 
             const body = {
                 imei: device.imei,
-                model: device.model.id,
+                model: deviceModelId(device),
                 type: nativeType,
             };
 

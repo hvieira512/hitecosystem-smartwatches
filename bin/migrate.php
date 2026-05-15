@@ -1,12 +1,11 @@
 <?php
 /**
- * Migration: creates MySQL tables and seeds the whitelist and clients.
+ * Migration: creates/upgrades MySQL tables and seeds initial devices.
  *
- * Uso:
- *   php bin/migrate.php                        # create tables
- *   php bin/migrate.php --seed                  # create tables + import whitelist.json + seed clients
- *   php bin/migrate.php --seed-only             # only import whitelist + clients (tables already exist)
- *   php bin/migrate.php --seed-clients          # seed default clients only
+ * Usage:
+ *   php bin/migrate.php              # create/upgrade tables
+ *   php bin/migrate.php --seed       # create/upgrade + import whitelist.json
+ *   php bin/migrate.php --seed-only  # only import whitelist.json (tables already exist)
  */
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -30,36 +29,24 @@ try {
 }
 
 $migrator = new Migrator($pdo);
-
 $args = $argv;
-$doSeed = in_array('--seed', $args) || in_array('--seed-only', $args);
-$doSeedClients = in_array('--seed-clients', $args);
-$doMigrate = !in_array('--seed-only', $args);
+$doSeed = in_array('--seed', $args, true) || in_array('--seed-only', $args, true);
+$doMigrate = !in_array('--seed-only', $args, true);
 
 if ($doMigrate) {
-    Logger::channel('db')->info('=== Creating tables ===');
+    Logger::channel('db')->info('=== Creating/upgrading tables ===');
     $migrator->migrate();
-}
-
-if ($doSeed || $doSeedClients) {
-    Logger::channel('db')->info('=== Seeding clients ===');
-    $clientCount = $migrator->seedClients();
-    if ($clientCount > 0) {
-        Logger::channel('db')->info("Seeded $clientCount client(s).");
-    } else {
-        Logger::channel('db')->info('Clients already seeded, skipping.');
-    }
 }
 
 if ($doSeed) {
     $jsonPath = __DIR__ . '/../config/whitelist.json';
     Logger::channel('db')->info("=== Importing whitelist from $jsonPath ===");
     $count = $migrator->seedFromWhitelistJson($jsonPath);
-    Logger::channel('db')->info("Imported $count devices.");
+    Logger::channel('db')->info("Imported $count device(s).");
 }
 
-if (!$doMigrate && !$doSeed && !$doSeedClients) {
-    Logger::channel('db')->info('Nothing was done. Use --seed to create tables and import data.');
+if (!$doMigrate && !$doSeed) {
+    Logger::channel('db')->info('Nothing was done. Use --seed to migrate and import data.');
 }
 
 Logger::channel('db')->info('Done.');

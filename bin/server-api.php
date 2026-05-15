@@ -9,6 +9,7 @@ use App\Http\ApiServer;
 use App\Database\Database;
 use App\Log\Logger;
 use App\Redis\Client as RedisClient;
+use App\Registry\DeviceCapabilities;
 
 $config = \App\Config::load()->all();
 
@@ -28,6 +29,9 @@ if ($dbConfig && $dbConfig['host'] !== '' && $dbConfig['name'] !== '') {
         Logger::channel('db')->warning('MySQL unavailable (' . $e->getMessage() . ')');
     }
 }
+
+DeviceCapabilities::setDatabasePdo($db?->pdo());
+DeviceCapabilities::setCacheTtl((int)(getenv('MODEL_CACHE_TTL_SECONDS') ?: 5));
 
 // --- Redis ---
 
